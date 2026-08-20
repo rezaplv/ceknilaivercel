@@ -10,11 +10,11 @@ import { Navigate } from "react-router-dom";
 import { usePageTitle } from "@/hooks/usePageTitle";
 
 interface Status {
-  lovable_api_key_present: boolean;
-  google_drive_api_key_present: boolean;
+  service_account_present: boolean;
+  client_email: string | null;
+  project_id: string | null;
   gateway_ok: boolean;
   gateway_status: number | null;
-  gateway_outcome: string | null;
   gateway_latency_ms: number | null;
   gateway_error: string | null;
   checked_at: string;
@@ -59,7 +59,7 @@ export default function StatusDrive() {
 
   if (user && user.role !== "ADMIN") return <Navigate to="/dashboard" replace />;
 
-  const allGood = status?.lovable_api_key_present && status?.google_drive_api_key_present && status?.gateway_ok;
+  const allGood = status?.service_account_present && status?.gateway_ok;
 
   return (
     <div className="p-4 md:p-6 space-y-6 max-w-3xl mx-auto">
@@ -70,7 +70,7 @@ export default function StatusDrive() {
             Status Koneksi Google Drive
           </h1>
           <p className="text-sm text-muted-foreground mt-1">
-            Verifikasi apakah secret backend dan gateway Google Drive aktif.
+            Verifikasi koneksi Google Cloud Service Account dan Google Drive API.
           </p>
         </div>
         <Button onClick={check} disabled={loading}>
@@ -87,7 +87,7 @@ export default function StatusDrive() {
               <CheckCircle2 className="w-12 h-12 text-green-600" />
               <div>
                 <p className="text-lg font-semibold text-green-600">Google Drive Terhubung</p>
-                <p className="text-sm text-muted-foreground">Backup otomatis siap berjalan.</p>
+                <p className="text-sm text-muted-foreground">Backup otomatis Google Drive siap berjalan.</p>
               </div>
             </>
           ) : (
@@ -96,7 +96,7 @@ export default function StatusDrive() {
               <div>
                 <p className="text-lg font-semibold text-destructive">Belum Siap</p>
                 <p className="text-sm text-muted-foreground">
-                  Selesaikan koneksi Google Drive di menu Connectors agar backup berjalan.
+                  Konfigurasikan Secret GOOGLE_SERVICE_ACCOUNT_JSON di Supabase Edge Functions.
                 </p>
               </div>
             </>
@@ -120,21 +120,21 @@ export default function StatusDrive() {
           ) : (
             <div>
               <Row
-                label="LOVABLE_API_KEY"
-                ok={status.lovable_api_key_present}
-                value={status.lovable_api_key_present ? "Tersedia" : "Tidak ada"}
+                label="Google Service Account"
+                ok={status.service_account_present}
+                value={status.service_account_present ? "Tersedia" : "Belum ada"}
               />
+              {status.client_email && (
+                <div className="py-2.5 px-3 bg-muted/40 rounded-lg my-2 text-xs font-mono break-all text-muted-foreground">
+                  Email: {status.client_email}
+                </div>
+              )}
               <Row
-                label="GOOGLE_DRIVE_API_KEY"
-                ok={status.google_drive_api_key_present}
-                value={status.google_drive_api_key_present ? "Terbaca" : "Belum tersedia"}
-              />
-              <Row
-                label="Gateway Google Drive"
+                label="Koneksi Google Drive API"
                 ok={status.gateway_ok}
                 value={
                   status.gateway_ok
-                    ? `OK (${status.gateway_outcome}, ${status.gateway_latency_ms}ms)`
+                    ? `OK (${status.gateway_latency_ms}ms)`
                     : status.gateway_status
                       ? `Gagal (HTTP ${status.gateway_status})`
                       : "Tidak terjangkau"
@@ -142,28 +142,13 @@ export default function StatusDrive() {
               />
               {status.gateway_error && (
                 <div className="mt-4 p-3 rounded-md bg-destructive/10 text-destructive text-xs">
-                  <strong>Pesan:</strong> {status.gateway_error}
+                  <strong>Pesan Error:</strong> {status.gateway_error}
                 </div>
               )}
             </div>
           )}
         </CardContent>
       </Card>
-
-      {!status?.google_drive_api_key_present && (
-        <Card className="border-orange-500/40 bg-orange-500/5">
-          <CardHeader>
-            <CardTitle className="text-base text-orange-600">Cara Menghubungkan</CardTitle>
-          </CardHeader>
-          <CardContent className="text-sm space-y-2">
-            <p>1. Buka <strong>Connectors</strong> di sidebar root Lovable.</p>
-            <p>2. Pilih <strong>Google Drive</strong> → <strong>Add new connection</strong>.</p>
-            <p>3. Login dengan akun Google tujuan backup, beri izin akses Drive.</p>
-            <p>4. Pastikan koneksi <strong>di-link ke project ini</strong>.</p>
-            <p>5. Kembali ke halaman ini dan klik <strong>Periksa Ulang</strong>.</p>
-          </CardContent>
-        </Card>
-      )}
     </div>
   );
 }

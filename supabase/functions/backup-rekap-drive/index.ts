@@ -1,5 +1,4 @@
-// Backup Rekap Nilai (view ALL) ke Google Drive admin.
-// Dipanggil otomatis oleh pg_cron setiap 5 menit.
+// Backup Rekap Nilai (view ALL) ke Google Drive admin via Google Service Account.
 import { createClient } from "npm:@supabase/supabase-js@2";
 import * as XLSX from "npm:xlsx@0.18.5";
 
@@ -8,73 +7,155 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-const GATEWAY = "https://connector-gateway.lovable.dev/google_drive";
 const ROOT_FOLDER_NAME = "CekNilai Backup";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
-function driveHeaders() {
-  const lovableKey = Deno.env.get("LOVABLE_API_KEY");
-  const driveKey = Deno.env.get("GOOGLE_DRIVE_API_KEY");
-  if (!lovableKey) throw new Error("LOVABLE_API_KEY tidak tersedia");
-  if (!driveKey) throw new Error("GOOGLE_DRIVE_API_KEY tidak tersedia — connect Google Drive terlebih dahulu");
-  return {
-    Authorization: `Bearer ${lovableKey}`,
-    "X-Connection-Api-Key": driveKey,
-  };
+function pemToBinary(pem: string): Uint8Array {
+  const b64 = pem
+    .replace(/-----BEGIN[ A-Z_-]+-----/g, "")
+    .replace(/-----END[ A-Z_-]+-----/g, "")
+    .replace(/\s+/g, "");
+  const binary = atob(b64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  return bytes;
 }
 
-async function driveSearch(q: string): Promise<{ id: string; name: string }[]> {
-  const url = `${GATEWAY}/drive/v3/files?q=${encodeURIComponent(q)}&fields=files(id,name)&pageSize=10`;
-  const r = await fetch(url, { headers: driveHeaders() });
+function base64url(input: string | Uint8Array): string {
+  let b64: string;
+  if (typeof input === "string") {
+    b64 = btoa(input);
+  } else {
+    let binary = "";
+    for (let i = 0; i < input.length; i++) {
+      binary += String.fromCharCode(input[i]);
+    }
+    b64 = btoa(binary);
+  }
+  return b64.replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+
+async function getGoogleAccessToken(sa: { client_email: string; private_key: string }): Promise<string> {
+  const now = Math.floor(Date.now() / 1000);
+  const header = { alg: "RS256", typ: "JWT" };
+  const claim = {
+    iss: sa.client_email,
+    scope: "https://www.googleapis.com/auth/drive",
+    aud: "https://oauth2.googleapis.com/token",
+    exp: now + 3600,
+    iat: now,
+  };
+
+  const encodedHeader = base64url(JSON.stringify(header));
+  const encodedClaim = base64url(JSON.stringify(claim));
+  const message = `${encodedHeader}.${encodedClaim}`;
+
+  const keyData = pemToBinary(sa.private_key);
+  const key = await crypto.subtle.importKey(
+    "pkcs8",
+    keyData,
+    { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },
+    false,
+    ["sign"]
+  );
+
+  const signature = await crypto.subtle.sign(
+    "RSASSA-PKCS1-v1_5",
+    key,
+    new TextEncoder().encode(message)
+  );
+
+  const jwt = `${message}.${base64url(new Uint8Array(signature))}`;
+
+  const res = await fetch("https://oauth2.googleapis.com/token", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer",
+      assertion: jwt,
+    }),
+  });
+
+  if (!res.ok) {
+    const errText = await res.text();
+    throw new Error(`Autentikasi Google gagal [${res.status}]: ${errText}`);
+  }
+
+  const data = await res.json();
+  return data.access_token;
+}
+
+function getServiceAccount() {
+  const rawSaJson = Deno.env.get("GOOGLE_SERVICE_ACCOUNT_JSON") || Deno.env.get("GOOGLE_SERVICE_ACCOUNT_KEY");
+  if (!rawSaJson) throw new Error("GOOGLE_SERVICE_ACCOUNT_JSON tidak ditemukan di Edge Function Secrets");
+  try {
+    return typeof rawSaJson === "string" ? JSON.parse(rawSaJson) : rawSaJson;
+  } catch {
+    return JSON.parse(JSON.parse(`"${rawSaJson}"`));
+  }
+}
+
+async function driveSearch(token: string, q: string): Promise<{ id: string; name: string }[]> {
+  const url = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}&fields=files(id,name)&pageSize=10`;
+  const r = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
   if (!r.ok) throw new Error(`Drive search failed [${r.status}]: ${await r.text()}`);
   const j = await r.json();
   return j.files ?? [];
 }
 
-async function driveCreateFolder(name: string, parentId?: string): Promise<string> {
+async function driveCreateFolder(token: string, name: string, parentId?: string): Promise<string> {
   const body: any = { name, mimeType: "application/vnd.google-apps.folder" };
   if (parentId) body.parents = [parentId];
-  const r = await fetch(`${GATEWAY}/drive/v3/files?fields=id`, {
+  const r = await fetch("https://www.googleapis.com/drive/v3/files?fields=id", {
     method: "POST",
-    headers: { ...driveHeaders(), "Content-Type": "application/json" },
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
     body: JSON.stringify(body),
   });
   if (!r.ok) throw new Error(`Drive folder create failed [${r.status}]: ${await r.text()}`);
   return (await r.json()).id;
 }
 
-async function ensureFolder(name: string, parentId?: string): Promise<string> {
-  const parentClause = parentId ? `'${parentId}' in parents and ` : "'root' in parents and ";
+async function ensureFolder(token: string, name: string, parentId?: string): Promise<string> {
+  const parentClause = parentId ? `'${parentId}' in parents and ` : "";
   const q = `${parentClause}name='${name.replace(/'/g, "\\'")}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
-  const found = await driveSearch(q);
+  const found = await driveSearch(token, q);
   if (found.length > 0) return found[0].id;
-  return await driveCreateFolder(name, parentId);
+  return await driveCreateFolder(token, name, parentId);
 }
 
 async function uploadOrUpdateFile(
+  token: string,
   fileName: string,
   folderId: string,
   buffer: Uint8Array,
 ): Promise<{ id: string; created: boolean }> {
   const q = `'${folderId}' in parents and name='${fileName.replace(/'/g, "\\'")}' and trashed=false`;
-  const existing = await driveSearch(q);
+  const existing = await driveSearch(token, q);
   const mimeType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
 
   if (existing.length > 0) {
     const fileId = existing[0].id;
-    const url = `https://connector-gateway.lovable.dev/google_drive/upload/drive/v3/files/${fileId}?uploadType=media`;
+    const url = `https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=media`;
     const r = await fetch(url, {
       method: "PATCH",
-      headers: { ...driveHeaders(), "Content-Type": mimeType },
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": mimeType,
+      },
       body: buffer,
     });
     if (!r.ok) throw new Error(`Drive update failed [${r.status}]: ${await r.text()}`);
     return { id: fileId, created: false };
   }
 
-  const boundary = "----lovable" + Math.random().toString(36).slice(2);
+  const boundary = "----ceknilaibackup" + Math.random().toString(36).slice(2);
   const metadata = JSON.stringify({ name: fileName, parents: [folderId], mimeType });
   const enc = new TextEncoder();
   const pre = enc.encode(
@@ -86,10 +167,13 @@ async function uploadOrUpdateFile(
   body.set(buffer, pre.length);
   body.set(post, pre.length + buffer.length);
 
-  const url = `https://connector-gateway.lovable.dev/google_drive/upload/drive/v3/files?uploadType=multipart&fields=id`;
+  const url = `https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id`;
   const r = await fetch(url, {
     method: "POST",
-    headers: { ...driveHeaders(), "Content-Type": `multipart/related; boundary=${boundary}` },
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": `multipart/related; boundary=${boundary}`,
+    },
     body,
   });
   if (!r.ok) throw new Error(`Drive create failed [${r.status}]: ${await r.text()}`);
@@ -194,7 +278,7 @@ function sanitize(s: string) {
   return s.replace(/[\\/:*?"<>|]/g, "_").trim();
 }
 
-async function processOne(supa: any, rootFolderId: string, item: any) {
+async function processOne(token: string, supa: any, rootFolderId: string, item: any) {
   const t0 = Date.now();
   const { kelas_id, mapel_id } = item;
 
@@ -251,9 +335,9 @@ async function processOne(supa: any, rootFolderId: string, item: any) {
     sumatifNames: sumatifNames as string[],
   });
 
-  const kelasFolderId = await ensureFolder(sanitize(kelasNama), rootFolderId);
+  const kelasFolderId = await ensureFolder(token, sanitize(kelasNama), rootFolderId);
   const fileName = `Rekap_${sanitize(kelasNama)}_${sanitize(mapelNama)}_ALL.xlsx`;
-  const { id: fileId } = await uploadOrUpdateFile(fileName, kelasFolderId, buf);
+  const { id: fileId } = await uploadOrUpdateFile(token, fileName, kelasFolderId, buf);
 
   return { kelasNama, mapelNama, fileId, fileName, skipped: false, ms: Date.now() - t0 };
 }
@@ -265,6 +349,9 @@ Deno.serve(async (req) => {
   const summary: any = { processed: 0, succeeded: 0, failed: 0, skipped: 0, items: [] };
 
   try {
+    const serviceAccount = getServiceAccount();
+    const token = await getGoogleAccessToken(serviceAccount);
+
     const { data: queue, error: qErr } = await supa.from("backup_queue").select("*").order("queued_at", { ascending: true }).limit(50);
     if (qErr) throw qErr;
     if (!queue || queue.length === 0) {
@@ -273,12 +360,12 @@ Deno.serve(async (req) => {
       });
     }
 
-    const rootFolderId = await ensureFolder(ROOT_FOLDER_NAME);
+    const rootFolderId = await ensureFolder(token, ROOT_FOLDER_NAME);
 
     for (const item of queue) {
       summary.processed++;
       try {
-        const r = await processOne(supa, rootFolderId, item);
+        const r = await processOne(token, supa, rootFolderId, item);
         if (r.skipped) {
           summary.skipped++;
           await supa.from("backup_logs").insert({
