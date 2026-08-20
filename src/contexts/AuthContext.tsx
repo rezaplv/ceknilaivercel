@@ -79,8 +79,31 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     // Normalisasi fleksibel: hapus spasi, tanda baca/simbol, lowercase
     const username = rawUsername.replace(/[^a-zA-Z0-9]/g, "").toLowerCase();
     const email = `${username}@ceknilai.local`;
-    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
-    if (error) return false;
+    let { data, error } = await supabase.auth.signInWithPassword({ email, password });
+    
+    if (error) {
+      // Fallback: Jika admin pertama kali belum terdaftar di Supabase Auth, otomatis daftarkan via API Auth
+      if (username === "admin" && password === "admin123") {
+        const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
+          email,
+          password,
+          options: {
+            data: { username: "admin", nama_lengkap: "Administrator" }
+          }
+        });
+        if (!signUpError && signUpData.user) {
+          data = signUpData as any;
+          error = null;
+        } else {
+          return false;
+        }
+      } else {
+        return false;
+      }
+    }
+
+    if (!data?.user) return false;
+
     sessionStorage.setItem("active_session", "true");
     if (rememberMe) {
       localStorage.setItem("remember_me", "1");
