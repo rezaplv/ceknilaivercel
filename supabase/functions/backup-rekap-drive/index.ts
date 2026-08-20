@@ -49,9 +49,8 @@ function buildExcelBuffer(args: {
     const sas = sasE ? Number(sasE.nilai) : null;
     const f = aF ?? 0, s = aS ?? 0;
     const stN = (sts !== null && sts >= 0) ? sts : 0;
-    const saN = (sas !== null && sas >= 0) ? saN(sas) : 0;
-    function saN(v: number | null) { return (v !== null && v >= 0) ? v : 0; }
-    const na = (2 * f + 2 * s + stN + saN(sas)) / 6;
+    const saNVal = (sas !== null && sas >= 0) ? sas : 0;
+    const na = (2 * f + 2 * s + stN + saNVal) / 6;
 
     const row: any[] = [i + 1, st.nama];
     formatifNames.forEach((n) => {
