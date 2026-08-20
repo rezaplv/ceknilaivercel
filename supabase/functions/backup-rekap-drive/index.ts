@@ -44,7 +44,7 @@ async function getGoogleAccessToken(sa: { client_email: string; private_key: str
   const header = { alg: "RS256", typ: "JWT" };
   const claim = {
     iss: sa.client_email,
-    scope: "https://www.googleapis.com/auth/drive",
+    scope: "https://www.googleapis.com/auth/drive https://www.googleapis.com/auth/drive.file",
     aud: "https://oauth2.googleapis.com/token",
     exp: now + 3600,
     iat: now,
@@ -100,17 +100,39 @@ function getServiceAccount() {
 }
 
 async function driveSearch(token: string, q: string): Promise<{ id: string; name: string }[]> {
-  const url = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}&fields=files(id,name)&pageSize=10`;
+  const url = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}&fields=files(id,name,parents)&pageSize=20&supportsAllDrives=true&includeItemsFromAllDrives=true`;
   const r = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
   if (!r.ok) throw new Error(`Drive search failed [${r.status}]: ${await r.text()}`);
   const j = await r.json();
   return j.files ?? [];
 }
 
-async function driveCreateFolder(token: string, name: string, parentId?: string): Promise<string> {
-  const body: any = { name, mimeType: "application/vnd.google-apps.folder" };
-  if (parentId) body.parents = [parentId];
-  const r = await fetch("https://www.googleapis.com/drive/v3/files?fields=id", {
+async function getRootFolderId(token: string): Promise<string> {
+  const envFolderId = Deno.env.get("GOOGLE_DRIVE_FOLDER_ID");
+  if (envFolderId) return envFolderId.trim();
+
+  // Cari folder CekNilai Backup yang dishare ke Service Account
+  const q = `name='${ROOT_FOLDER_NAME.replace(/'/g, "\\'")}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
+  const found = await driveSearch(token, q);
+  if (found.length > 0) return found[0].id;
+
+  // Coba pencarian fleksibel
+  const qFlexible = `name contains 'CekNilai' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
+  const foundFlex = await driveSearch(token, qFlexible);
+  if (foundFlex.length > 0) return foundFlex[0].id;
+
+  throw new Error(
+    `Folder '${ROOT_FOLDER_NAME}' tidak ditemukan. Pastikan folder tersebut sudah dibuat di Google Drive Anda dan dibagikan (Share) ke email Service Account dengan izin Editor.`
+  );
+}
+
+async function driveCreateFolder(token: string, name: string, parentId: string): Promise<string> {
+  const body: any = {
+    name,
+    mimeType: "application/vnd.google-apps.folder",
+    parents: [parentId],
+  };
+  const r = await fetch("https://www.googleapis.com/drive/v3/files?fields=id&supportsAllDrives=true", {
     method: "POST",
     headers: {
       Authorization: `Bearer ${token}`,
@@ -122,9 +144,8 @@ async function driveCreateFolder(token: string, name: string, parentId?: string)
   return (await r.json()).id;
 }
 
-async function ensureFolder(token: string, name: string, parentId?: string): Promise<string> {
-  const parentClause = parentId ? `'${parentId}' in parents and ` : "";
-  const q = `${parentClause}name='${name.replace(/'/g, "\\'")}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
+async function ensureSubFolder(token: string, name: string, parentId: string): Promise<string> {
+  const q = `'${parentId}' in parents and name='${name.replace(/'/g, "\\'")}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
   const found = await driveSearch(token, q);
   if (found.length > 0) return found[0].id;
   return await driveCreateFolder(token, name, parentId);
@@ -142,7 +163,7 @@ async function uploadOrUpdateFile(
 
   if (existing.length > 0) {
     const fileId = existing[0].id;
-    const url = `https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=media`;
+    const url = `https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=media&supportsAllDrives=true`;
     const r = await fetch(url, {
       method: "PATCH",
       headers: {
@@ -167,7 +188,7 @@ async function uploadOrUpdateFile(
   body.set(buffer, pre.length);
   body.set(post, pre.length + buffer.length);
 
-  const url = `https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id`;
+  const url = `https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id&supportsAllDrives=true`;
   const r = await fetch(url, {
     method: "POST",
     headers: {
@@ -335,7 +356,7 @@ async function processOne(token: string, supa: any, rootFolderId: string, item: 
     sumatifNames: sumatifNames as string[],
   });
 
-  const kelasFolderId = await ensureFolder(token, sanitize(kelasNama), rootFolderId);
+  const kelasFolderId = await ensureSubFolder(token, sanitize(kelasNama), rootFolderId);
   const fileName = `Rekap_${sanitize(kelasNama)}_${sanitize(mapelNama)}_ALL.xlsx`;
   const { id: fileId } = await uploadOrUpdateFile(token, fileName, kelasFolderId, buf);
 
@@ -360,7 +381,7 @@ Deno.serve(async (req) => {
       });
     }
 
-    const rootFolderId = await ensureFolder(token, ROOT_FOLDER_NAME);
+    const rootFolderId = await getRootFolderId(token);
 
     for (const item of queue) {
       summary.processed++;
