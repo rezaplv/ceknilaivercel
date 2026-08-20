@@ -1,4 +1,4 @@
-project_id = "mkwxdtqndpkjxwpnbabw"
+project_id = "rymlbukljujtvbyhuswg"
 
 [functions.manage-users]
 verify_jwt = false
@@ -7,4 +7,7 @@ verify_jwt = false
 verify_jwt = false
 
 [functions.backup-rekap-drive]
+verify_jwt = false
+
+[functions.check-drive-status]
 verify_jwt = false
