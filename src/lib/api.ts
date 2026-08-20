@@ -290,6 +290,8 @@ export async function enqueueBackup(kelasId: string, mapelId: string) {
         { kelas_id: kelasId, mapel_id: mapelId, queued_by: user?.id ?? null, queued_at: new Date().toISOString(), attempts: 0, last_error: null },
         { onConflict: "kelas_id,mapel_id" },
       );
+    // Langsung trigger Edge Function backup di background agar tersimpan ke Drive saat itu juga
+    void supabase.functions.invoke("backup-rekap-drive", { body: {} });
   } catch (e) {
     console.warn("enqueueBackup gagal (diabaikan):", e);
   }
