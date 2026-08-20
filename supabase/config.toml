@@ -1,0 +1,10 @@
+project_id = "mkwxdtqndpkjxwpnbabw"
+
+[functions.manage-users]
+verify_jwt = false
+
+[functions.seed-admin]
+verify_jwt = false
+
+[functions.backup-rekap-drive]
+verify_jwt = false
