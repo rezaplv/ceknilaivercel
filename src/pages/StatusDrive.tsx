@@ -10,9 +10,9 @@ import { Navigate } from "react-router-dom";
 import { usePageTitle } from "@/hooks/usePageTitle";
 
 interface Status {
-  service_account_present: boolean;
-  client_email: string | null;
-  project_id: string | null;
+  web_app_present?: boolean;
+  service_account_present?: boolean;
+  mode?: string;
   gateway_ok: boolean;
   gateway_status: number | null;
   gateway_latency_ms: number | null;
@@ -59,7 +59,7 @@ export default function StatusDrive() {
 
   if (user && user.role !== "ADMIN") return <Navigate to="/dashboard" replace />;
 
-  const allGood = status?.service_account_present && status?.gateway_ok;
+  const allGood = status?.gateway_ok;
 
   return (
     <div className="p-4 md:p-6 space-y-6 max-w-3xl mx-auto">
@@ -70,7 +70,7 @@ export default function StatusDrive() {
             Status Koneksi Google Drive
           </h1>
           <p className="text-sm text-muted-foreground mt-1">
-            Verifikasi koneksi Google Cloud Service Account dan Google Drive API.
+            Verifikasi koneksi Google Drive Backup Web App.
           </p>
         </div>
         <Button onClick={check} disabled={loading}>
@@ -87,7 +87,9 @@ export default function StatusDrive() {
               <CheckCircle2 className="w-12 h-12 text-green-600" />
               <div>
                 <p className="text-lg font-semibold text-green-600">Google Drive Terhubung</p>
-                <p className="text-sm text-muted-foreground">Backup otomatis Google Drive siap berjalan.</p>
+                <p className="text-sm text-muted-foreground">
+                  Backup otomatis Google Drive ({status?.mode || "Google Apps Script"}) siap berjalan.
+                </p>
               </div>
             </>
           ) : (
@@ -96,7 +98,7 @@ export default function StatusDrive() {
               <div>
                 <p className="text-lg font-semibold text-destructive">Belum Siap</p>
                 <p className="text-sm text-muted-foreground">
-                  Konfigurasikan Secret GOOGLE_SERVICE_ACCOUNT_JSON di Supabase Edge Functions.
+                  Konfigurasikan Secret GOOGLE_DRIVE_WEBAPP_URL di Supabase Edge Functions.
                 </p>
               </div>
             </>
@@ -120,17 +122,12 @@ export default function StatusDrive() {
           ) : (
             <div>
               <Row
-                label="Google Service Account"
-                ok={status.service_account_present}
-                value={status.service_account_present ? "Tersedia" : "Belum ada"}
+                label="Google Drive Web App"
+                ok={!!status.web_app_present}
+                value={status.web_app_present ? "Tersedia" : "Belum ada"}
               />
-              {status.client_email && (
-                <div className="py-2.5 px-3 bg-muted/40 rounded-lg my-2 text-xs font-mono break-all text-muted-foreground">
-                  Email: {status.client_email}
-                </div>
-              )}
               <Row
-                label="Koneksi Google Drive API"
+                label="Koneksi Google Drive"
                 ok={status.gateway_ok}
                 value={
                   status.gateway_ok

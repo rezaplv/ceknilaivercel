@@ -1,4 +1,4 @@
-// Backup Rekap Nilai (view ALL) ke Google Drive admin via Google Service Account.
+// Backup Rekap Nilai (view ALL) ke Google Drive via Google Apps Script Web App / Service Account.
 import { createClient } from "npm:@supabase/supabase-js@2";
 import * as XLSX from "npm:xlsx@0.18.5";
 
@@ -7,198 +7,20 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-const ROOT_FOLDER_NAME = "CekNilai Backup";
-
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
-function pemToBinary(pem: string): Uint8Array {
-  const b64 = pem
-    .replace(/-----BEGIN[ A-Z_-]+-----/g, "")
-    .replace(/-----END[ A-Z_-]+-----/g, "")
-    .replace(/\s+/g, "");
-  const binary = atob(b64);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) {
-    bytes[i] = binary.charCodeAt(i);
+function uint8ArrayToBase64(bytes: Uint8Array): string {
+  let binary = "";
+  const len = bytes.byteLength;
+  for (let i = 0; i < len; i++) {
+    binary += String.fromCharCode(bytes[i]);
   }
-  return bytes;
+  return btoa(binary);
 }
 
-function base64url(input: string | Uint8Array): string {
-  let b64: string;
-  if (typeof input === "string") {
-    b64 = btoa(input);
-  } else {
-    let binary = "";
-    for (let i = 0; i < input.length; i++) {
-      binary += String.fromCharCode(input[i]);
-    }
-    b64 = btoa(binary);
-  }
-  return b64.replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
-}
-
-async function getGoogleAccessToken(sa: { client_email: string; private_key: string }): Promise<string> {
-  const now = Math.floor(Date.now() / 1000);
-  const header = { alg: "RS256", typ: "JWT" };
-  const claim = {
-    iss: sa.client_email,
-    scope: "https://www.googleapis.com/auth/drive https://www.googleapis.com/auth/drive.file",
-    aud: "https://oauth2.googleapis.com/token",
-    exp: now + 3600,
-    iat: now,
-  };
-
-  const encodedHeader = base64url(JSON.stringify(header));
-  const encodedClaim = base64url(JSON.stringify(claim));
-  const message = `${encodedHeader}.${encodedClaim}`;
-
-  const keyData = pemToBinary(sa.private_key);
-  const key = await crypto.subtle.importKey(
-    "pkcs8",
-    keyData,
-    { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },
-    false,
-    ["sign"]
-  );
-
-  const signature = await crypto.subtle.sign(
-    "RSASSA-PKCS1-v1_5",
-    key,
-    new TextEncoder().encode(message)
-  );
-
-  const jwt = `${message}.${base64url(new Uint8Array(signature))}`;
-
-  const res = await fetch("https://oauth2.googleapis.com/token", {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({
-      grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer",
-      assertion: jwt,
-    }),
-  });
-
-  if (!res.ok) {
-    const errText = await res.text();
-    throw new Error(`Autentikasi Google gagal [${res.status}]: ${errText}`);
-  }
-
-  const data = await res.json();
-  return data.access_token;
-}
-
-function getServiceAccount() {
-  const rawSaJson = Deno.env.get("GOOGLE_SERVICE_ACCOUNT_JSON") || Deno.env.get("GOOGLE_SERVICE_ACCOUNT_KEY");
-  if (!rawSaJson) throw new Error("GOOGLE_SERVICE_ACCOUNT_JSON tidak ditemukan di Edge Function Secrets");
-  try {
-    return typeof rawSaJson === "string" ? JSON.parse(rawSaJson) : rawSaJson;
-  } catch {
-    return JSON.parse(JSON.parse(`"${rawSaJson}"`));
-  }
-}
-
-async function driveSearch(token: string, q: string): Promise<{ id: string; name: string }[]> {
-  const url = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}&fields=files(id,name,parents)&pageSize=20&supportsAllDrives=true&includeItemsFromAllDrives=true`;
-  const r = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
-  if (!r.ok) throw new Error(`Drive search failed [${r.status}]: ${await r.text()}`);
-  const j = await r.json();
-  return j.files ?? [];
-}
-
-async function getRootFolderId(token: string): Promise<string> {
-  const envFolderId = Deno.env.get("GOOGLE_DRIVE_FOLDER_ID");
-  if (envFolderId) return envFolderId.trim();
-
-  // Cari folder CekNilai Backup yang dishare ke Service Account
-  const q = `name='${ROOT_FOLDER_NAME.replace(/'/g, "\\'")}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
-  const found = await driveSearch(token, q);
-  if (found.length > 0) return found[0].id;
-
-  // Coba pencarian fleksibel
-  const qFlexible = `name contains 'CekNilai' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
-  const foundFlex = await driveSearch(token, qFlexible);
-  if (foundFlex.length > 0) return foundFlex[0].id;
-
-  throw new Error(
-    `Folder '${ROOT_FOLDER_NAME}' tidak ditemukan. Pastikan folder tersebut sudah dibuat di Google Drive Anda dan dibagikan (Share) ke email Service Account dengan izin Editor.`
-  );
-}
-
-async function driveCreateFolder(token: string, name: string, parentId: string): Promise<string> {
-  const body: any = {
-    name,
-    mimeType: "application/vnd.google-apps.folder",
-    parents: [parentId],
-  };
-  const r = await fetch("https://www.googleapis.com/drive/v3/files?fields=id&supportsAllDrives=true", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${token}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(body),
-  });
-  if (!r.ok) throw new Error(`Drive folder create failed [${r.status}]: ${await r.text()}`);
-  return (await r.json()).id;
-}
-
-async function ensureSubFolder(token: string, name: string, parentId: string): Promise<string> {
-  const q = `'${parentId}' in parents and name='${name.replace(/'/g, "\\'")}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
-  const found = await driveSearch(token, q);
-  if (found.length > 0) return found[0].id;
-  return await driveCreateFolder(token, name, parentId);
-}
-
-async function uploadOrUpdateFile(
-  token: string,
-  fileName: string,
-  folderId: string,
-  buffer: Uint8Array,
-): Promise<{ id: string; created: boolean }> {
-  const q = `'${folderId}' in parents and name='${fileName.replace(/'/g, "\\'")}' and trashed=false`;
-  const existing = await driveSearch(token, q);
-  const mimeType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
-
-  if (existing.length > 0) {
-    const fileId = existing[0].id;
-    const url = `https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=media&supportsAllDrives=true`;
-    const r = await fetch(url, {
-      method: "PATCH",
-      headers: {
-        Authorization: `Bearer ${token}`,
-        "Content-Type": mimeType,
-      },
-      body: buffer,
-    });
-    if (!r.ok) throw new Error(`Drive update failed [${r.status}]: ${await r.text()}`);
-    return { id: fileId, created: false };
-  }
-
-  const boundary = "----ceknilaibackup" + Math.random().toString(36).slice(2);
-  const metadata = JSON.stringify({ name: fileName, parents: [folderId], mimeType });
-  const enc = new TextEncoder();
-  const pre = enc.encode(
-    `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${metadata}\r\n--${boundary}\r\nContent-Type: ${mimeType}\r\n\r\n`,
-  );
-  const post = enc.encode(`\r\n--${boundary}--`);
-  const body = new Uint8Array(pre.length + buffer.length + post.length);
-  body.set(pre, 0);
-  body.set(buffer, pre.length);
-  body.set(post, pre.length + buffer.length);
-
-  const url = `https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id&supportsAllDrives=true`;
-  const r = await fetch(url, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${token}`,
-      "Content-Type": `multipart/related; boundary=${boundary}`,
-    },
-    body,
-  });
-  if (!r.ok) throw new Error(`Drive create failed [${r.status}]: ${await r.text()}`);
-  return { id: (await r.json()).id, created: true };
+function sanitize(s: string) {
+  return s.replace(/[\\/:*?"<>|]/g, "_").trim();
 }
 
 function buildExcelBuffer(args: {
@@ -227,8 +49,9 @@ function buildExcelBuffer(args: {
     const sas = sasE ? Number(sasE.nilai) : null;
     const f = aF ?? 0, s = aS ?? 0;
     const stN = (sts !== null && sts >= 0) ? sts : 0;
-    const saN = (sas !== null && sas >= 0) ? sas : 0;
-    const na = (2 * f + 2 * s + stN + saN) / 6;
+    const saN = (sas !== null && sas >= 0) ? saN(sas) : 0;
+    function saN(v: number | null) { return (v !== null && v >= 0) ? v : 0; }
+    const na = (2 * f + 2 * s + stN + saN(sas)) / 6;
 
     const row: any[] = [i + 1, st.nama];
     formatifNames.forEach((n) => {
@@ -295,11 +118,36 @@ function buildExcelBuffer(args: {
   return new Uint8Array(out);
 }
 
-function sanitize(s: string) {
-  return s.replace(/[\\/:*?"<>|]/g, "_").trim();
+async function uploadViaWebApp(webAppUrl: string, kelasNama: string, mapelNama: string, buf: Uint8Array) {
+  const fileName = `Rekap_${sanitize(kelasNama)}_${sanitize(mapelNama)}_ALL.xlsx`;
+  const base64 = uint8ArrayToBase64(buf);
+
+  const res = await fetch(webAppUrl, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      folderName: "CekNilai Backup",
+      subFolder: sanitize(kelasNama),
+      fileName,
+      fileBase64: base64,
+    }),
+    redirect: "follow",
+  });
+
+  if (!res.ok) {
+    const txt = await res.text();
+    throw new Error(`Google Apps Script error [${res.status}]: ${txt}`);
+  }
+
+  const json = await res.json();
+  if (!json.ok) {
+    throw new Error(`Google Apps Script error: ${json.error || "Gagal menyimpan file"}`);
+  }
+
+  return { id: json.fileId || "webapp-file", fileName: json.fileName || fileName };
 }
 
-async function processOne(token: string, supa: any, rootFolderId: string, item: any) {
+async function processOne(webAppUrl: string, supa: any, item: any) {
   const t0 = Date.now();
   const { kelas_id, mapel_id } = item;
 
@@ -356,9 +204,7 @@ async function processOne(token: string, supa: any, rootFolderId: string, item: 
     sumatifNames: sumatifNames as string[],
   });
 
-  const kelasFolderId = await ensureSubFolder(token, sanitize(kelasNama), rootFolderId);
-  const fileName = `Rekap_${sanitize(kelasNama)}_${sanitize(mapelNama)}_ALL.xlsx`;
-  const { id: fileId } = await uploadOrUpdateFile(token, fileName, kelasFolderId, buf);
+  const { id: fileId, fileName } = await uploadViaWebApp(webAppUrl, kelasNama, mapelNama, buf);
 
   return { kelasNama, mapelNama, fileId, fileName, skipped: false, ms: Date.now() - t0 };
 }
@@ -370,8 +216,10 @@ Deno.serve(async (req) => {
   const summary: any = { processed: 0, succeeded: 0, failed: 0, skipped: 0, items: [] };
 
   try {
-    const serviceAccount = getServiceAccount();
-    const token = await getGoogleAccessToken(serviceAccount);
+    const webAppUrl = Deno.env.get("GOOGLE_DRIVE_WEBAPP_URL");
+    if (!webAppUrl) {
+      throw new Error("Secret GOOGLE_DRIVE_WEBAPP_URL belum dikonfigurasi di Supabase Edge Function Secrets.");
+    }
 
     const { data: queue, error: qErr } = await supa.from("backup_queue").select("*").order("queued_at", { ascending: true }).limit(50);
     if (qErr) throw qErr;
@@ -381,12 +229,10 @@ Deno.serve(async (req) => {
       });
     }
 
-    const rootFolderId = await getRootFolderId(token);
-
     for (const item of queue) {
       summary.processed++;
       try {
-        const r = await processOne(token, supa, rootFolderId, item);
+        const r = await processOne(webAppUrl, supa, item);
         if (r.skipped) {
           summary.skipped++;
           await supa.from("backup_logs").insert({
