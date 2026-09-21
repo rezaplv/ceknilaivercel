@@ -412,7 +412,37 @@ export default function RekapNilai() {
                     )}
                     {(view === "ALL" || view === "SUMATIF") && sumatifNames.map((name) => (
                       <th key={`sh-${name}`} className="text-center py-3 px-4 font-semibold text-muted-foreground text-xs">
-                        {view === "SUMATIF" ? name : `${getJenisPrefix("SUMATIF")}: ${name}`}
+                        {editingHeader?.jenis === "SUMATIF" && editingHeader?.oldName === name ? (
+                          <div className="flex items-center justify-center gap-1">
+                            <input
+                              type="text"
+                              value={editingHeader.newName}
+                              onChange={(e) => setEditingHeader({ ...editingHeader, newName: e.target.value })}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter") handleHeaderRename();
+                                if (e.key === "Escape") setEditingHeader(null);
+                              }}
+                              autoFocus
+                              className="w-32 px-2 py-1 rounded border bg-background text-xs text-center"
+                              disabled={savingHeader}
+                            />
+                            <button onClick={handleHeaderRename} disabled={savingHeader} className="p-1 rounded hover:bg-accent text-primary transition-colors" title="Simpan">
+                              <Check className="h-3.5 w-3.5" />
+                            </button>
+                            <button onClick={() => setEditingHeader(null)} disabled={savingHeader} className="p-1 rounded hover:bg-accent text-destructive transition-colors" title="Batal">
+                              <X className="h-3.5 w-3.5" />
+                            </button>
+                          </div>
+                        ) : (
+                          <button
+                            onClick={() => setEditingHeader({ jenis: "SUMATIF", oldName: name, newName: name })}
+                            className="group/hdr inline-flex items-center gap-1 hover:text-primary transition-colors cursor-pointer"
+                            title="Klik untuk rename"
+                          >
+                            <span>{view === "SUMATIF" ? name : `${getJenisPrefix("SUMATIF")}: ${name}`}</span>
+                            <Pencil className="h-3 w-3 opacity-0 group-hover/hdr:opacity-100 transition-opacity" />
+                          </button>
+                        )}
                       </th>
                     ))}
                     {(view === "ALL" || view === "SUMATIF") && sumatifNames.length >= 1 && (
