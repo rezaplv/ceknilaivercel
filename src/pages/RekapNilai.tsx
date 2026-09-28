@@ -58,11 +58,16 @@ export default function RekapNilai() {
     if (studentIds.length > 0) {
       const { data: profiles } = await supabase
         .from("profiles")
-        .select("user_id, nama_lengkap")
+        .select("user_id, nama_lengkap, archived_at")
         .in("user_id", studentIds);
       const profileMap: Record<string, string> = {};
-      (profiles || []).forEach((p: any) => { profileMap[p.user_id] = p.nama_lengkap; });
-      setAllScores(scores.map((s: any) => ({
+      const archivedSet = new Set<string>();
+      (profiles || []).forEach((p: any) => { 
+        profileMap[p.user_id] = p.nama_lengkap; 
+        if (p.archived_at) archivedSet.add(p.user_id);
+      });
+      const activeScores = scores.filter((s: any) => !archivedSet.has(s.student_id));
+      setAllScores(activeScores.map((s: any) => ({
         ...s,
         profiles: { nama_lengkap: profileMap[s.student_id] || s.student_id },
       })));
@@ -158,11 +163,12 @@ export default function RekapNilai() {
       toast({ title: "Error", description: "Nilai harus antara 0-100, atau gunakan '.' / '-' untuk Belum Mengerjakan", variant: "destructive" });
       return;
     }
-    // For SUMATIF/STS/SAS: if below KKM, set nilai to KKM and store original in nilai_asli
+    // For SUMATIF/STS/SAS: check if it was previously auto-kkm (nilai_asli !== null)
     const scoreEntry = allScores.find((s: any) => s.id === editing.scoreId);
     const jenis = scoreEntry?.jenis;
     const kkm = scoreEntry ? Number(scoreEntry.kkm) : 75;
-    const isBelowKkm = nilaiAsli >= 0 && nilaiAsli < kkm && ["SUMATIF", "STS", "SAS"].includes(jenis);
+    const wasAutoKkm = scoreEntry?.nilai_asli !== null && scoreEntry?.nilai_asli !== undefined;
+    const isBelowKkm = wasAutoKkm && nilaiAsli >= 0 && nilaiAsli < kkm && ["SUMATIF", "STS", "SAS"].includes(jenis);
     const finalNilai = isBelowKkm ? kkm : nilaiAsli;
     const finalNilaiAsli = isBelowKkm ? nilaiAsli : null;
 
@@ -407,7 +413,7 @@ export default function RekapNilai() {
                         )}
                       </th>
                     ))}
-                    {(view === "ALL" || view === "FORMATIF") && formatifNames.length > 1 && (
+                    {(view === "ALL" || view === "FORMATIF") && formatifNames.length >= 1 && (
                       <th className="text-center py-3 px-4 font-semibold text-blue-600 text-xs">Rata-rata {getJenisPrefix("FORMATIF")}</th>
                     )}
                     {(view === "ALL" || view === "SUMATIF") && sumatifNames.map((name) => (
@@ -472,7 +478,7 @@ export default function RekapNilai() {
                         {(view === "ALL" || view === "FORMATIF") && formatifNames.map((name) => (
                           <td key={`f-${st.id}-${name}`} className="py-3 px-4 text-center">{renderEditableNilai(getScore(st.id, "FORMATIF", name))}</td>
                         ))}
-                        {(view === "ALL" || view === "FORMATIF") && formatifNames.length > 1 && (
+                        {(view === "ALL" || view === "FORMATIF") && formatifNames.length >= 1 && (
                           <td className="py-3 px-4 text-center font-semibold text-blue-600">{avgF !== null ? avgF.toFixed(1) : "-"}</td>
                         )}
                         {(view === "ALL" || view === "SUMATIF") && sumatifNames.map((name) => (

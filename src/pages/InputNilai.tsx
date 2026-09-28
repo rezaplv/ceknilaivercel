@@ -66,12 +66,11 @@ export default function InputNilai() {
     if (!kelasObj || !mapelObj) return;
 
     const entries = students
-      .filter(s => scores[s.user_id])
       .map(s => {
-        const raw = scores[s.user_id].trim();
+        const raw = (scores[s.user_id] || "").trim();
         const parsed = parseFloat(raw);
-        // If input is non-numeric (e.g. ".", "-"), save as -1 to indicate "Belum Mengerjakan"
-        const nilaiAsli = isNaN(parsed) ? -1 : parsed;
+        // If input is non-numeric (e.g. "", ".", "-"), save as -1 to indicate "Belum Mengerjakan"
+        const nilaiAsli = (raw === "" || isNaN(parsed)) ? -1 : parsed;
         const kkmVal = parseFloat(kkm) || 75;
         // Auto-detect: for SUMATIF/STS/SAS, if below KKM and autoKkm is enabled, show KKM in rekap but keep original for student
         const isBelowKkm = autoKkm && nilaiAsli >= 0 && nilaiAsli < kkmVal && ["SUMATIF", "STS", "SAS"].includes(jenis);

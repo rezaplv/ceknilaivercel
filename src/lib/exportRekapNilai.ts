@@ -34,7 +34,7 @@ function buildRows(data: ExportData) {
   const getScoresFor = (studentId: string, jenis: string) =>
     allScores.filter((s: any) => s.student_id === studentId && s.jenis === jenis && s.nilai_type === "angka");
 
-  const avg = (nums: number[]) => nums.length > 0 ? nums.reduce((a, b) => a + b, 0) / nums.length : null;
+  const avg = (nums: number[]) => nums.length > 0 ? nums.map(n => n < 0 ? 0 : n).reduce((a, b) => a + b, 0) / nums.length : null;
 
   const calcNA = (avgF: number | null, avgS: number | null, sts: number | null, sas: number | null) => {
     const f = avgF ?? 0;
@@ -60,9 +60,10 @@ function buildRows(data: ExportData) {
     if (showF) {
       formatifNames.forEach(name => {
         const entry = getScore(st.id, "FORMATIF", name);
-        row.push(entry ? Number(entry.nilai) : "");
+        const val = entry ? Number(entry.nilai) : null;
+        row.push(val !== null ? (val < 0 ? "-" : val) : "");
       });
-      if (formatifNames.length > 1) {
+      if (formatifNames.length >= 1) {
         row.push(avgF !== null ? Math.round(avgF * 10) / 10 : "");
       }
     }
@@ -70,15 +71,16 @@ function buildRows(data: ExportData) {
     if (showS) {
       sumatifNames.forEach(name => {
         const entry = getScore(st.id, "SUMATIF", name);
-        row.push(entry ? Number(entry.nilai) : "");
+        const val = entry ? Number(entry.nilai) : null;
+        row.push(val !== null ? (val < 0 ? "-" : val) : "");
       });
       if (sumatifNames.length >= 1) {
         row.push(avgS !== null ? Math.round(avgS * 10) / 10 : "");
       }
     }
 
-    if (showSTS) row.push(sts !== null ? sts : "");
-    if (showSAS) row.push(sas !== null ? sas : "");
+    if (showSTS) row.push(sts !== null ? (sts < 0 ? "-" : sts) : "");
+    if (showSAS) row.push(sas !== null ? (sas < 0 ? "-" : sas) : "");
     if (showNA) row.push(na !== null ? Math.round(na * 10) / 10 : "");
 
     return row;
