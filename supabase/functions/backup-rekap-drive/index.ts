@@ -36,7 +36,7 @@ function buildExcelBuffer(args: {
     scores.find((s) => s.student_id === sid && s.jenis === jenis && (nama ? s.nama_penilaian === nama : true));
   const getScoresFor = (sid: string, jenis: string) =>
     scores.filter((s) => s.student_id === sid && s.jenis === jenis && s.nilai_type === "angka");
-  const avg = (n: number[]) => n.length ? n.reduce((a, b) => a + b, 0) / n.length : null;
+  const avg = (n: number[]) => n.length ? n.map(x => x < 0 ? 0 : x).reduce((a, b) => a + b, 0) / n.length : null;
 
   const rows = students.map((st, i) => {
     const fS = getScoresFor(st.id, "FORMATIF");
@@ -55,17 +55,19 @@ function buildExcelBuffer(args: {
     const row: any[] = [i + 1, st.nama];
     formatifNames.forEach((n) => {
       const e = getScore(st.id, "FORMATIF", n);
-      row.push(e ? Number(e.nilai) : "");
+      const val = e ? Number(e.nilai) : null;
+      row.push(val !== null ? (val < 0 ? "-" : val) : "");
     });
-    if (formatifNames.length > 1) row.push(aF !== null ? Math.round(aF * 10) / 10 : "");
+    if (formatifNames.length >= 1) row.push(aF !== null ? Math.round(aF * 10) / 10 : "");
     sumatifNames.forEach((n) => {
       const e = getScore(st.id, "SUMATIF", n);
-      row.push(e ? Number(e.nilai) : "");
+      const val = e ? Number(e.nilai) : null;
+      row.push(val !== null ? (val < 0 ? "-" : val) : "");
     });
     if (sumatifNames.length >= 1) row.push(aS !== null ? Math.round(aS * 10) / 10 : "");
-    row.push(sts !== null ? sts : "");
-    row.push(sas !== null ? sas : "");
-    row.push(Math.round(na * 10) / 10);
+    row.push(sts !== null ? (sts < 0 ? "-" : sts) : "");
+    row.push(sas !== null ? (sas < 0 ? "-" : sas) : "");
+    row.push(na !== null ? Math.round(na * 10) / 10 : "");
     return row;
   });
 
