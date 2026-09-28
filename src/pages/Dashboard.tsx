@@ -355,7 +355,7 @@ export default function Dashboard() {
   usePageTitle("Dashboard");
   const [refreshing, setRefreshing] = useState(false);
   const [broadcasts, setBroadcasts] = useState<BroadcastDisplayItem[]>([]);
-  const [stats, setStats] = useState({ guru: 0, siswa: 0, kelas: 0, mapel: 0 });
+  const [stats, setStats] = useState({ guru: 0, siswa: 0, kelas: 0, mapel: 0, nilai: 0 });
   const [auditLogs, setAuditLogs] = useState<any[]>([]);
   const { toast } = useToast();
   const [showCleaningData, setShowCleaningData] = useState(false);
@@ -383,6 +383,9 @@ export default function Dashboard() {
             .in("nama", user.kelas);
           const kelasIds = (kelasData || []).map((k: any) => k.id);
 
+          let totalSiswa = 0;
+          let totalNilai = 0;
+
           if (kelasIds.length > 0) {
             // Ambil user_id siswa di kelas-kelas tersebut
             const { data: userKelasData } = await supabase
@@ -398,15 +401,23 @@ export default function Dashboard() {
                 .select("user_id")
                 .eq("role", "SISWA")
                 .in("user_id", userIds);
-              setStats(prev => ({ ...prev, siswa: (studentRoles || []).length }));
-            } else {
-              setStats(prev => ({ ...prev, siswa: 0 }));
+              totalSiswa = (studentRoles || []).length;
             }
-          } else {
-            setStats(prev => ({ ...prev, siswa: 0 }));
+            
+            // Hitung Total Nilai Masuk
+            if (user?.mapel && user.mapel.length > 0) {
+              const { data: mapelData } = await supabase.from("mapel").select("id").in("nama", user.mapel);
+              const mapelIds = (mapelData || []).map((m: any) => m.id);
+              if (mapelIds.length > 0) {
+                const { count } = await supabase.from("scores").select("*", { count: "exact", head: true }).in("kelas_id", kelasIds).in("mapel_id", mapelIds);
+                totalNilai = count || 0;
+              }
+            }
           }
+          
+          setStats(prev => ({ ...prev, siswa: totalSiswa, nilai: totalNilai }));
         } else {
-          setStats(prev => ({ ...prev, siswa: 0 }));
+          setStats(prev => ({ ...prev, siswa: 0, nilai: 0 }));
         }
       } else {
         const [allUsers, broadcastData, logs] = await Promise.all([
@@ -734,10 +745,11 @@ export default function Dashboard() {
             </div>
           </div>
 
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 sm:gap-4">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
             <StatCard label="Kelas Diampu" value={user.kelas?.length || 0} icon={School} gradient="stat-card-green" delay={100} loading={statsLoading} />
             <StatCard label="Mapel Diajar" value={user.mapel?.length || 0} icon={BookOpen} gradient="stat-card-orange" delay={200} loading={statsLoading} />
             <StatCard label="Total Siswa" value={stats.siswa} icon={GraduationCap} gradient="stat-card-blue" delay={300} loading={statsLoading} />
+            <StatCard label="Total Nilai" value={stats.nilai || 0} icon={ClipboardList} gradient="stat-card-purple" delay={400} loading={statsLoading} />
           </div>
 
           <QuickAccess items={[
