@@ -404,13 +404,22 @@ export default function Dashboard() {
               totalSiswa = (studentRoles || []).length;
             }
             
-            // Hitung Total Nilai Masuk
+            // Hitung Total Jumlah Jenis Nilai / Tagihan (Unique Assessments)
             if (user?.mapel && user.mapel.length > 0) {
               const { data: mapelData } = await supabase.from("mapel").select("id").in("nama", user.mapel);
               const mapelIds = (mapelData || []).map((m: any) => m.id);
               if (mapelIds.length > 0) {
-                const { count } = await supabase.from("scores").select("*", { count: "exact", head: true }).in("kelas_id", kelasIds).in("mapel_id", mapelIds);
-                totalNilai = count || 0;
+                const { data: scoresData } = await supabase
+                  .from("scores")
+                  .select("kelas_id, mapel_id, jenis, nama_penilaian")
+                  .in("kelas_id", kelasIds)
+                  .in("mapel_id", mapelIds)
+                  .limit(10000);
+                  
+                const uniqueAssessments = new Set(
+                  (scoresData || []).map(s => `${s.kelas_id}-${s.mapel_id}-${s.jenis}-${s.nama_penilaian}`)
+                );
+                totalNilai = uniqueAssessments.size;
               }
             }
           }
@@ -749,7 +758,7 @@ export default function Dashboard() {
             <StatCard label="Kelas Diampu" value={user.kelas?.length || 0} icon={School} gradient="stat-card-green" delay={100} loading={statsLoading} />
             <StatCard label="Mapel Diajar" value={user.mapel?.length || 0} icon={BookOpen} gradient="stat-card-orange" delay={200} loading={statsLoading} />
             <StatCard label="Total Siswa" value={stats.siswa} icon={GraduationCap} gradient="stat-card-blue" delay={300} loading={statsLoading} />
-            <StatCard label="Total Nilai" value={stats.nilai || 0} icon={ClipboardList} gradient="stat-card-purple" delay={400} loading={statsLoading} />
+            <StatCard label="Total Penilaian" value={stats.nilai || 0} icon={ClipboardList} gradient="stat-card-purple" delay={400} loading={statsLoading} />
           </div>
 
           <QuickAccess items={[
