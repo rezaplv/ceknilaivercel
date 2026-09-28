@@ -347,26 +347,49 @@ export default function RekapNilai() {
         <>
           <div className="bg-card border rounded-xl p-4">
             <h3 className="text-sm font-semibold text-muted-foreground mb-3 uppercase tracking-wider">Hapus Nilai Berdasarkan Jenis</h3>
-            <div className="flex flex-wrap gap-2">
-              {formatifNames.map((name) => (
-                <Button key={`del-f-${name}`} variant="outline" size="sm" onClick={() => setDeleteConfirm({ jenis: "FORMATIF", nama: name })} className="text-destructive border-destructive/30 hover:bg-destructive/10">
-                  <Trash2 className="h-3.5 w-3.5 mr-1" /> {getJenisPrefix("FORMATIF")}: {name}
-                </Button>
-              ))}
-              {sumatifNames.map((name) => (
-                <Button key={`del-s-${name}`} variant="outline" size="sm" onClick={() => setDeleteConfirm({ jenis: "SUMATIF", nama: name })} className="text-destructive border-destructive/30 hover:bg-destructive/10">
-                  <Trash2 className="h-3.5 w-3.5 mr-1" /> {getJenisPrefix("SUMATIF")}: {name}
-                </Button>
-              ))}
-              {allScores.some((s: any) => s.jenis === "STS") && (
-                <Button variant="outline" size="sm" onClick={() => setDeleteConfirm({ jenis: "STS" })} className="text-destructive border-destructive/30 hover:bg-destructive/10">
-                  <Trash2 className="h-3.5 w-3.5 mr-1" /> STS
-                </Button>
+            <div className="flex flex-col gap-4">
+              {formatifNames.length > 0 && (
+                <div>
+                  <p className="text-xs font-medium text-muted-foreground mb-2">TUGAS (FORMATIF)</p>
+                  <div className="flex flex-wrap gap-2">
+                    {formatifNames.map((name) => (
+                      <Button key={`del-f-${name}`} variant="outline" size="sm" onClick={() => setDeleteConfirm({ jenis: "FORMATIF", nama: name })} className="text-destructive border-destructive/30 hover:bg-destructive/10">
+                        <Trash2 className="h-3.5 w-3.5 mr-1" /> {name}
+                      </Button>
+                    ))}
+                  </div>
+                </div>
               )}
-              {allScores.some((s: any) => s.jenis === "SAS") && (
-                <Button variant="outline" size="sm" onClick={() => setDeleteConfirm({ jenis: "SAS" })} className="text-destructive border-destructive/30 hover:bg-destructive/10">
-                  <Trash2 className="h-3.5 w-3.5 mr-1" /> SAS
-                </Button>
+              
+              {sumatifNames.length > 0 && (
+                <div>
+                  <p className="text-xs font-medium text-muted-foreground mb-2">ULANGAN HARIAN (SUMATIF)</p>
+                  <div className="flex flex-wrap gap-2">
+                    {sumatifNames.map((name) => (
+                      <Button key={`del-s-${name}`} variant="outline" size="sm" onClick={() => setDeleteConfirm({ jenis: "SUMATIF", nama: name })} className="text-destructive border-destructive/30 hover:bg-destructive/10">
+                        <Trash2 className="h-3.5 w-3.5 mr-1" /> {name}
+                      </Button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {(allScores.some((s: any) => s.jenis === "STS") || allScores.some((s: any) => s.jenis === "SAS")) && (
+                <div>
+                  <p className="text-xs font-medium text-muted-foreground mb-2">UJIAN (STS / SAS)</p>
+                  <div className="flex flex-wrap gap-2">
+                    {allScores.some((s: any) => s.jenis === "STS") && (
+                      <Button variant="outline" size="sm" onClick={() => setDeleteConfirm({ jenis: "STS" })} className="text-destructive border-destructive/30 hover:bg-destructive/10">
+                        <Trash2 className="h-3.5 w-3.5 mr-1" /> STS
+                      </Button>
+                    )}
+                    {allScores.some((s: any) => s.jenis === "SAS") && (
+                      <Button variant="outline" size="sm" onClick={() => setDeleteConfirm({ jenis: "SAS" })} className="text-destructive border-destructive/30 hover:bg-destructive/10">
+                        <Trash2 className="h-3.5 w-3.5 mr-1" /> SAS
+                      </Button>
+                    )}
+                  </div>
+                </div>
               )}
             </div>
           </div>

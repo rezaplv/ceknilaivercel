@@ -777,7 +777,7 @@ export default function Dashboard() {
             <div className="space-y-3">
               {broadcasts.length > 0 ? (
                 broadcasts.map((b, i) => (
-                  <BroadcastCard key={b.id} item={b} index={i} onDelete={handleDeleteBroadcast} canDelete />
+                  <BroadcastCard key={b.id} item={b} index={i} onDelete={handleDeleteBroadcast} canDelete={false} />
                 ))
               ) : (
                 <div className="bg-card border rounded-xl p-6 text-center">

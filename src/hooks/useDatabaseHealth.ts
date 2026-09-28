@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import { useAuth } from "@/contexts/AuthContext";
 
 // Ambang batas (perkiraan untuk Lovable Cloud / Supabase free tier ~500MB)
 const ROW_WARN_THRESHOLD = 80_000;   // total baris di tabel utama
@@ -80,14 +81,17 @@ export function checkErrorForOverload(error: unknown): boolean {
 }
 
 export function useDatabaseHealth() {
+  const { user } = useAuth();
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
     let cancelled = false;
 
+    // MATIKAN POLLING UNTUK SELAIN ADMIN (Sangat menghemat kuota Supabase)
+    if (user?.role !== "ADMIN") return;
+
     const checkSize = async () => {
       try {
-        // Tabel paling banyak baris di app ini
         const tables = ["scores", "nilai_pengelolaan", "backup_logs"] as const;
         let total = 0;
         let hadError = false;
@@ -116,7 +120,6 @@ export function useDatabaseHealth() {
       }
     };
 
-    // Cek awal setelah 10 detik agar tidak mengganggu boot
     const initial = setTimeout(checkSize, 10_000);
     intervalRef.current = setInterval(checkSize, CHECK_INTERVAL_MS);
 
@@ -125,5 +128,5 @@ export function useDatabaseHealth() {
       clearTimeout(initial);
       if (intervalRef.current) clearInterval(intervalRef.current);
     };
-  }, []);
+  }, [user?.role]);
 }

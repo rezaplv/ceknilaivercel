@@ -19,6 +19,8 @@ import {
   User as UserIcon,
   ClipboardList,
   Trophy,
+  Database,
+  History
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
@@ -46,6 +48,8 @@ const ADMIN_MENU: NavItem[] = [
   { label: "Nilai Asli", icon: FileText, path: "/nilai-asli" },
   { label: "Pengelolaan", icon: Sparkles, path: "/pengelolaan-nilai" },
   { label: "Tagihan", icon: ClipboardList, path: "/tagihan" },
+  { label: "Riwayat Backup", icon: History, path: "/riwayat-backup" },
+  { label: "Status Drive", icon: Database, path: "/status-drive" },
   { label: "Manajemen User", icon: Users, path: "/manajemen-user" },
   { label: "Kelas & Mapel", icon: School, path: "/kelas-mapel" },
   { label: "Konfigurasi", icon: Settings, path: "/konfigurasi" },
