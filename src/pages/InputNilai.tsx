@@ -73,7 +73,7 @@ export default function InputNilai() {
         const nilaiAsli = (raw === "" || isNaN(parsed)) ? -1 : parsed;
         const kkmVal = parseFloat(kkm) || 75;
         // Auto-detect: for SUMATIF/STS/SAS, if below KKM and autoKkm is enabled, show KKM in rekap but keep original for student
-        const isBelowKkm = autoKkm && nilaiAsli >= 0 && nilaiAsli < kkmVal && ["SUMATIF", "STS", "SAS"].includes(jenis);
+        const isBelowKkm = autoKkm && nilaiAsli >= 0 && nilaiAsli < kkmVal && ["FORMATIF", "SUMATIF", "STS", "SAS"].includes(jenis);
         return {
           kelas_id: kelasObj.id,
           mapel_id: mapelObj.id,
@@ -231,7 +231,7 @@ export default function InputNilai() {
             <label className="block text-xs font-semibold text-muted-foreground mb-1.5 uppercase tracking-wider">KKM</label>
             <input type="number" inputMode="numeric" pattern="[0-9]*" min={0} max={100} value={kkm} onChange={(e) => setKkm(e.target.value)} placeholder="75" className="w-full px-3 py-2.5 rounded-lg border bg-background text-sm" />
           </div>
-          {["SUMATIF", "STS", "SAS"].includes(jenis) && (
+          {["FORMATIF", "SUMATIF", "STS", "SAS"].includes(jenis) && (
             <div className="sm:col-span-2 lg:col-span-4">
               <label className="block text-xs font-semibold text-muted-foreground mb-1.5 uppercase tracking-wider">
                 Mode Nilai di Bawah KKM
