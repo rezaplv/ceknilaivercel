@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef } from "react";
+import { useNavigate } from "react-router-dom";
 import { usePageTitle } from "@/hooks/usePageTitle";
 import { useAuth } from "@/contexts/AuthContext";
-import { ClipboardEdit, Upload, Table2, Download } from "lucide-react";
+import { ClipboardEdit, Upload, Table2, Download, CheckCircle2, FileSpreadsheet, Lightbulb } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { fetchKelasList, fetchMapelList, fetchStudentsByKelas, insertScores } from "@/lib/api";
 import { supabase } from "@/integrations/supabase/client";
@@ -18,6 +19,7 @@ const JENIS_OPTIONS = ["FORMATIF", "SUMATIF", "STS", "SAS"];
 export default function InputNilai() {
   const { user } = useAuth();
   const { toast } = useToast();
+  const navigate = useNavigate();
   usePageTitle("Input Nilai");
   const [mode, setMode] = useState<InputMode>("manual");
   const [kelas, setKelas] = useState("");
@@ -42,6 +44,14 @@ export default function InputNilai() {
   const [existingNames, setExistingNames] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const [successDialog, setSuccessDialog] = useState<{
+    open: boolean;
+    kelas: string;
+    mapel: string;
+    jenis: string;
+    namaPenilaian: string;
+    count: number;
+  } | null>(null);
 
   const [kelasList, setKelasList] = useState<{ id: string; nama: string }[]>([]);
   const [mapelList, setMapelList] = useState<{ id: string; nama: string }[]>([]);
@@ -131,11 +141,22 @@ export default function InputNilai() {
     setSaving(true);
     try {
       await insertScores(entries);
-      toast({ title: "Berhasil", description: `${entries.length} nilai berhasil disimpan` });
+      const savedInfo = {
+        open: true,
+        kelas,
+        mapel,
+        jenis,
+        namaPenilaian: showNamaPenilaian ? (namaPenilaian || jenis) : jenis,
+        count: entries.length,
+      };
+
+      setSuccessDialog(savedInfo);
 
       setScores({});
       setVisible({});
       setBatchText("");
+      setNamaPenilaian("");
+      setAutoKkm(null);
     } catch (err: any) {
       toast({ title: "Error", description: err.message || "Gagal menyimpan", variant: "destructive" });
     }
@@ -672,6 +693,62 @@ export default function InputNilai() {
             <AlertDialogCancel disabled={saving}>Batal</AlertDialogCancel>
             <AlertDialogAction onClick={confirmSave} disabled={saving}>
               {saving ? "Menyimpan..." : "Ya, Simpan"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={!!successDialog?.open} onOpenChange={(open) => { if (!open) setSuccessDialog(null); }}>
+        <AlertDialogContent className="max-w-md">
+          <AlertDialogHeader>
+            <div className="mx-auto w-12 h-12 rounded-full bg-emerald-500/15 text-emerald-500 flex items-center justify-center mb-1 ring-8 ring-emerald-500/10">
+              <CheckCircle2 className="w-6 h-6" />
+            </div>
+            <AlertDialogTitle className="text-center text-xl font-bold">Nilai Berhasil Disimpan!</AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-3 pt-2 text-foreground">
+                <p className="text-center text-sm text-muted-foreground">
+                  Data nilai untuk <strong>&quot;{successDialog?.namaPenilaian}&quot;</strong> pada kelas <strong>{successDialog?.kelas} ({successDialog?.mapel})</strong> telah sukses tersimpan.
+                </p>
+
+                <div className="rounded-xl border border-primary/20 bg-primary/5 p-3.5 space-y-2.5 text-xs leading-relaxed text-foreground">
+                  <div className="flex items-center gap-1.5 font-bold text-primary">
+                    <Lightbulb className="w-4 h-4 shrink-0 text-amber-500" />
+                    <span>Panduan Melanjutkan / Mengedit Nilai:</span>
+                  </div>
+                  <p className="text-muted-foreground">
+                    Jika ada siswa susulan yang baru mengumpulkan tugas ini, atau ada nilai yang ingin diperbaiki:
+                  </p>
+                  <div className="bg-background/80 rounded-lg p-2.5 border space-y-1">
+                    <p className="font-semibold text-emerald-600 dark:text-emerald-400">
+                      👉 Jangan diinput ulang dari halaman ini!
+                    </p>
+                    <p className="text-muted-foreground">
+                      Cukup buka menu <strong>Rekap Nilai</strong>, lalu klik langsung pada kolom nilai siswa tersebut untuk mengisi nilainya secara instan.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="flex-col sm:flex-row gap-2 mt-2">
+            <AlertDialogCancel
+              onClick={() => setSuccessDialog(null)}
+              className="w-full sm:w-auto text-xs"
+            >
+              Input Penilaian Lain
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                const k = successDialog?.kelas;
+                const m = successDialog?.mapel;
+                setSuccessDialog(null);
+                navigate(`/rekap-nilai?kelas=${encodeURIComponent(k || "")}&mapel=${encodeURIComponent(m || "")}`);
+              }}
+              className="w-full sm:w-auto bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold gap-1.5 shadow-md shadow-emerald-600/30"
+            >
+              <FileSpreadsheet className="w-4 h-4" />
+              Buka di Rekap Nilai
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

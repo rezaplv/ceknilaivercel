@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
+import { useSearchParams } from "react-router-dom";
 import { usePageTitle } from "@/hooks/usePageTitle";
 import { useAuth } from "@/contexts/AuthContext";
 import { useAppSettings } from "@/contexts/AppSettingsContext";
@@ -28,6 +29,7 @@ interface EditingCell {
 export default function RekapNilai() {
   const { user } = useAuth();
   const { semester, tahunAjaran } = useAppSettings();
+  const [searchParams] = useSearchParams();
   usePageTitle("Rekap Nilai");
   const [kelas, setKelas] = useState("");
   const [mapel, setMapel] = useState("");
@@ -41,6 +43,13 @@ export default function RekapNilai() {
   const [savingEdit, setSavingEdit] = useState(false);
   const [editingHeader, setEditingHeader] = useState<{ jenis: string; oldName: string; newName: string } | null>(null);
   const [savingHeader, setSavingHeader] = useState(false);
+
+  useEffect(() => {
+    const qKelas = searchParams.get("kelas");
+    const qMapel = searchParams.get("mapel");
+    if (qKelas) setKelas(qKelas);
+    if (qMapel) setMapel(qMapel);
+  }, [searchParams]);
 
   useEffect(() => {
     Promise.all([fetchKelasList(), fetchMapelList()]).then(([k, m]) => {
