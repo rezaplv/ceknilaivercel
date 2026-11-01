@@ -31,7 +31,9 @@ export default function InputNilai() {
   const [csvFile, setCsvFile] = useState<File | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const modeKkmRef = useRef<HTMLDivElement>(null);
+  const namaPenilaianRef = useRef<HTMLInputElement>(null);
   const [modeKkmError, setModeKkmError] = useState(false);
+  const [namaPenilaianError, setNamaPenilaianError] = useState(false);
   const [saving, setSaving] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
 
@@ -115,6 +117,15 @@ export default function InputNilai() {
   const requestSave = () => {
     if (!kelas || !mapel || !jenis) {
       toast({ title: "Lengkapi data", description: "Pilih kelas, mata pelajaran, dan jenis penilaian terlebih dahulu", variant: "destructive" });
+      return;
+    }
+    // Validasi: Nama Penilaian wajib diisi untuk Formatif & Sumatif
+    if (showNamaPenilaian && !namaPenilaian.trim()) {
+      setNamaPenilaianError(true);
+      toast({ title: "⚠️ Nama Penilaian Kosong", description: "Isi Nama Penilaian terlebih dahulu (contoh: Tugas Puisi, UH Bab 1, Kuis Dongeng)", variant: "destructive" });
+      namaPenilaianRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+      namaPenilaianRef.current?.focus();
+      setTimeout(() => setNamaPenilaianError(false), 3000);
       return;
     }
     // Validasi: Mode Nilai di Bawah KKM wajib dipilih
@@ -232,9 +243,21 @@ export default function InputNilai() {
             </select>
           </div>
           {showNamaPenilaian && (
-            <div>
-              <label className="block text-xs font-semibold text-muted-foreground mb-1.5 uppercase tracking-wider">Nama Penilaian</label>
-              <input type="text" value={namaPenilaian} onChange={(e) => setNamaPenilaian(e.target.value)} placeholder="Contoh: Kuis Bab 1" className="w-full px-3 py-2.5 rounded-lg border bg-background text-sm" />
+            <div className={cn("transition-all duration-300", namaPenilaianError && "animate-pulse")}>
+              <label className={cn("block text-xs font-semibold mb-1.5 uppercase tracking-wider transition-colors", namaPenilaianError ? "text-red-500" : "text-muted-foreground")}>
+                Nama Penilaian <span className="text-red-400">*</span>
+              </label>
+              <input
+                ref={namaPenilaianRef}
+                type="text"
+                value={namaPenilaian}
+                onChange={(e) => { setNamaPenilaian(e.target.value); setNamaPenilaianError(false); }}
+                placeholder="Contoh: Kuis Bab 1"
+                className={cn(
+                  "w-full px-3 py-2.5 rounded-lg border bg-background text-sm transition-all",
+                  namaPenilaianError && "border-red-500 ring-1 ring-red-500/50"
+                )}
+              />
             </div>
           )}
           <div>
