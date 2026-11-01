@@ -4,6 +4,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { ClipboardEdit, Upload, Table2, Download } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { fetchKelasList, fetchMapelList, fetchStudentsByKelas, insertScores } from "@/lib/api";
+import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { RankingToggle } from "@/components/RankingToggle";
@@ -32,8 +33,13 @@ export default function InputNilai() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const modeKkmRef = useRef<HTMLDivElement>(null);
   const namaPenilaianRef = useRef<HTMLInputElement>(null);
+  const kkmRef = useRef<HTMLInputElement>(null);
+  const studentInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
   const [modeKkmError, setModeKkmError] = useState(false);
   const [namaPenilaianError, setNamaPenilaianError] = useState(false);
+  const [kkmError, setKkmError] = useState(false);
+  const [invalidStudentId, setInvalidStudentId] = useState<string | null>(null);
+  const [existingNames, setExistingNames] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
 
@@ -56,12 +62,36 @@ export default function InputNilai() {
     }
   }, [kelas]);
 
+  useEffect(() => {
+    if (kelas && mapel && jenis && (jenis === "FORMATIF" || jenis === "SUMATIF")) {
+      const kObj = kelasList.find(k => k.nama === kelas);
+      const mObj = mapelList.find(m => m.nama === mapel);
+      if (kObj && mObj) {
+        supabase
+          .from("scores")
+          .select("nama_penilaian")
+          .eq("kelas_id", kObj.id)
+          .eq("mapel_id", mObj.id)
+          .eq("jenis", jenis)
+          .then(({ data }) => {
+            if (data) {
+              const unique = Array.from(new Set(data.map((d: any) => d.nama_penilaian).filter(Boolean))) as string[];
+              setExistingNames(unique);
+            }
+          });
+      }
+    } else {
+      setExistingNames([]);
+    }
+  }, [kelas, mapel, jenis, kelasList, mapelList]);
+
   if (!user || user.role === "SISWA") return null;
 
   const kelasOptions = user.role === "GURU" && user.kelas?.length ? kelasList.filter(k => user.kelas!.includes(k.nama)) : kelasList;
   const mapelOptions = user.role === "GURU" && user.mapel?.length ? mapelList.filter(m => user.mapel!.includes(m.nama)) : mapelList;
 
   const showNamaPenilaian = jenis === "FORMATIF" || jenis === "SUMATIF";
+  const isDuplicateName = showNamaPenilaian && !!namaPenilaian.trim() && existingNames.some(n => n.toLowerCase().trim() === namaPenilaian.toLowerCase().trim());
 
   const handleSave = async () => {
     if (!kelas || !mapel || !jenis) return;
@@ -72,7 +102,7 @@ export default function InputNilai() {
     const entries = students
       .map(s => {
         const raw = (scores[s.user_id] || "").trim();
-        const parsed = parseFloat(raw);
+        const parsed = parseFloat(raw.replace(",", "."));
         // If input is non-numeric (e.g. "", ".", "-"), save as -1 to indicate "Belum Mengerjakan"
         const nilaiAsli = (raw === "" || isNaN(parsed)) ? -1 : parsed;
         const kkmVal = parseFloat(kkm) || 75;
@@ -119,6 +149,16 @@ export default function InputNilai() {
       toast({ title: "Lengkapi data", description: "Pilih kelas, mata pelajaran, dan jenis penilaian terlebih dahulu", variant: "destructive" });
       return;
     }
+    // Validasi: KKM wajib diisi & bernilai 10 s/d 100
+    const kkmVal = parseFloat(kkm);
+    if (!kkm || isNaN(kkmVal) || kkmVal < 10 || kkmVal > 100) {
+      setKkmError(true);
+      toast({ title: "⚠️ KKM Tidak Valid", description: "KKM wajib diisi angka antara 10 sampai 100 (contoh: 75)", variant: "destructive" });
+      kkmRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+      kkmRef.current?.focus();
+      setTimeout(() => setKkmError(false), 3000);
+      return;
+    }
     // Validasi: Nama Penilaian wajib diisi untuk Formatif & Sumatif
     if (showNamaPenilaian && !namaPenilaian.trim()) {
       setNamaPenilaianError(true);
@@ -139,6 +179,25 @@ export default function InputNilai() {
     if (filledCount === 0) {
       toast({ title: "Belum ada nilai", description: "Isi minimal satu nilai siswa sebelum menyimpan", variant: "destructive" });
       return;
+    }
+    // Validasi: Rentang Nilai Siswa (0 s/d 100)
+    for (const s of students) {
+      const raw = (scores[s.user_id] || "").trim();
+      if (raw !== "" && raw !== "-" && raw !== ".") {
+        const parsed = parseFloat(raw.replace(",", "."));
+        if (isNaN(parsed) || parsed < 0 || parsed > 100) {
+          setInvalidStudentId(s.user_id);
+          toast({
+            title: "⚠️ Nilai Tidak Valid!",
+            description: `Nilai untuk ${s.nama_lengkap} adalah "${raw}". Nilai harus berupa angka antara 0 sampai 100!`,
+            variant: "destructive",
+          });
+          studentInputRefs.current[s.user_id]?.scrollIntoView({ behavior: "smooth", block: "center" });
+          studentInputRefs.current[s.user_id]?.focus();
+          setTimeout(() => setInvalidStudentId(null), 4000);
+          return;
+        }
+      }
     }
     setConfirmOpen(true);
   };
@@ -255,14 +314,38 @@ export default function InputNilai() {
                 placeholder="Contoh: Kuis Bab 1"
                 className={cn(
                   "w-full px-3 py-2.5 rounded-lg border bg-background text-sm transition-all",
-                  namaPenilaianError && "border-red-500 ring-1 ring-red-500/50"
+                  namaPenilaianError && "border-red-500 ring-1 ring-red-500/50",
+                  isDuplicateName && "border-amber-500 ring-1 ring-amber-500/50"
                 )}
               />
+              {isDuplicateName && (
+                <p className="text-[11px] text-amber-500 font-medium mt-1.5 flex items-center gap-1">
+                  <span>⚠️</span>
+                  <span>Nama &quot;{namaPenilaian}&quot; sudah ada sebelumnya. Nilai ini akan memperbarui data tersebut.</span>
+                </p>
+              )}
             </div>
           )}
           <div>
-            <label className="block text-xs font-semibold text-muted-foreground mb-1.5 uppercase tracking-wider">KKM</label>
-            <input type="number" inputMode="numeric" pattern="[0-9]*" min={0} max={100} value={kkm} onChange={(e) => setKkm(e.target.value)} placeholder="75" className="w-full px-3 py-2.5 rounded-lg border bg-background text-sm" />
+            <label className={cn("block text-xs font-semibold mb-1.5 uppercase tracking-wider transition-colors", kkmError ? "text-red-500" : "text-muted-foreground")}>
+              KKM <span className="text-red-400">*</span>
+            </label>
+            <input
+              ref={kkmRef}
+              type="number"
+              inputMode="numeric"
+              pattern="[0-9]*"
+              min={10}
+              max={100}
+              value={kkm}
+              onChange={(e) => { setKkm(e.target.value); setKkmError(false); }}
+              placeholder="75"
+              className={cn(
+                "w-full px-3 py-2.5 rounded-lg border bg-background text-sm transition-all",
+                kkmError && "border-red-500 ring-1 ring-red-500/50"
+              )}
+            />
+            {kkmError && <p className="text-[10px] text-red-500 mt-1">KKM harus antara 10 - 100</p>}
           </div>
           {["FORMATIF", "SUMATIF", "STS", "SAS"].includes(jenis) && (
             <div ref={modeKkmRef} className={cn("sm:col-span-2 lg:col-span-4 transition-all duration-300", modeKkmError && "animate-pulse")}>
@@ -356,11 +439,25 @@ export default function InputNilai() {
               </thead>
               <tbody>
                 {students.map((s, i) => (
-                  <tr key={s.user_id} className="border-t hover:bg-muted/30 transition-colors">
+                  <tr key={s.user_id} className={cn("border-t hover:bg-muted/30 transition-colors", invalidStudentId === s.user_id && "bg-destructive/10")}>
                     <td className="py-3 px-4 text-muted-foreground">{i + 1}</td>
                     <td className="py-3 px-4 font-medium">{s.nama_lengkap}</td>
                     <td className="py-3 px-4">
-                      <input type="text" inputMode="decimal" pattern="[0-9]*[.,]?[0-9]*" value={scores[s.user_id] || ""} onChange={(e) => setScores({ ...scores, [s.user_id]: e.target.value })} className="w-24 px-3 py-1.5 rounded-lg border bg-background text-sm" placeholder="0-100" />
+                      <input
+                        ref={(el) => { studentInputRefs.current[s.user_id] = el; }}
+                        type="text"
+                        inputMode="decimal"
+                        value={scores[s.user_id] || ""}
+                        onChange={(e) => {
+                          setScores({ ...scores, [s.user_id]: e.target.value });
+                          if (invalidStudentId === s.user_id) setInvalidStudentId(null);
+                        }}
+                        className={cn(
+                          "w-24 px-3 py-1.5 rounded-lg border bg-background text-sm transition-all",
+                          invalidStudentId === s.user_id && "border-destructive ring-2 ring-destructive/50 bg-destructive/10 font-bold text-destructive animate-pulse"
+                        )}
+                        placeholder="0-100"
+                      />
                     </td>
                     {(!!jenis) && (
                       <td className="py-3 px-4 text-center">
@@ -557,6 +654,16 @@ export default function InputNilai() {
                   <li><span className="text-muted-foreground">KKM:</span> <span className="font-semibold">{kkm}{autoKkm === true ? " (Otomatis ke KKM)" : autoKkm === false ? " (Apa Adanya)" : ""}</span></li>
                   <li><span className="text-muted-foreground">Jumlah Nilai:</span> <span className="font-semibold text-primary">{filledCount} dari {students.length} siswa</span></li>
                 </ul>
+                {isDuplicateName && (
+                  <div className="p-2.5 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-600 dark:text-amber-400 text-xs">
+                    ⚠️ <strong>Perhatian:</strong> Penilaian &quot;{namaPenilaian}&quot; sudah pernah diinput di kelas ini. Menyimpan akan memperbarui/menambahkan data pada penilaian tersebut.
+                  </div>
+                )}
+                {filledCount < students.length && (
+                  <p className="text-xs text-amber-600 dark:text-amber-400 font-medium">
+                    ℹ️ Catatan: Ada {students.length - filledCount} siswa belum diisi nilainya (otomatis tercatat sebagai Belum Mengumpulkan / &quot;-&quot;).
+                  </p>
+                )}
                 <p className="text-xs text-muted-foreground pt-1">Pastikan data sudah benar. Lanjutkan menyimpan?</p>
               </div>
             </AlertDialogDescription>
