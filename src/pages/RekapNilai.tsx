@@ -174,12 +174,12 @@ export default function RekapNilai() {
       toast({ title: "Error", description: "Nilai harus antara 0-100, atau gunakan '.' / '-' untuk Belum Mengerjakan", variant: "destructive" });
       return;
     }
-    // For SUMATIF/STS/SAS: check if it was previously auto-kkm (nilai_asli !== null)
+    // For FORMATIF/SUMATIF/STS/SAS: check if it was previously auto-kkm (nilai_asli !== null)
     const scoreEntry = allScores.find((s: any) => s.id === editing.scoreId);
     const jenis = scoreEntry?.jenis;
     const kkm = scoreEntry ? Number(scoreEntry.kkm) : 75;
     const wasAutoKkm = scoreEntry?.nilai_asli !== null && scoreEntry?.nilai_asli !== undefined;
-    const isBelowKkm = wasAutoKkm && nilaiAsli >= 0 && nilaiAsli < kkm && ["SUMATIF", "STS", "SAS"].includes(jenis);
+    const isBelowKkm = wasAutoKkm && nilaiAsli >= 0 && nilaiAsli < kkm && ["FORMATIF", "SUMATIF", "STS", "SAS"].includes(jenis);
     const finalNilai = isBelowKkm ? kkm : nilaiAsli;
     const finalNilaiAsli = isBelowKkm ? nilaiAsli : null;
 

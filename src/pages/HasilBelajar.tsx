@@ -247,8 +247,8 @@ export default function HasilBelajar() {
               </thead>
               <tbody>
                 {displayScores.map((s: any, i: number) => {
-                  // For SUMATIF/STS/SAS with nilai_asli set, show nilai_asli to students
-                  const hasLockedValue = s.nilai_asli !== null && s.nilai_asli !== undefined && ["SUMATIF", "STS", "SAS"].includes(s.jenis);
+                  // For FORMATIF/SUMATIF/STS/SAS with nilai_asli set, show nilai_asli to students
+                  const hasLockedValue = s.nilai_asli !== null && s.nilai_asli !== undefined && ["FORMATIF", "SUMATIF", "STS", "SAS"].includes(s.jenis);
                   const displayNilai = hasLockedValue ? Number(s.nilai_asli) : Number(s.nilai);
                   const belumMengerjakan = displayNilai < 0;
                   const isTuntas = belumMengerjakan ? false : s.nilai_type === "ceklis" ? displayNilai === 1 : displayNilai >= Number(s.kkm);
