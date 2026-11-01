@@ -742,8 +742,9 @@ export default function InputNilai() {
               onClick={() => {
                 const k = successDialog?.kelas;
                 const m = successDialog?.mapel;
+                const j = successDialog?.jenis;
                 setSuccessDialog(null);
-                navigate(`/rekap-nilai?kelas=${encodeURIComponent(k || "")}&mapel=${encodeURIComponent(m || "")}`);
+                navigate(`/rekap-nilai?kelas=${encodeURIComponent(k || "")}&mapel=${encodeURIComponent(m || "")}&view=${encodeURIComponent(j || "")}`);
               }}
               className="w-full sm:w-auto bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold gap-1.5 shadow-md shadow-emerald-600/30"
             >

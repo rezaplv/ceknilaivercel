@@ -47,8 +47,10 @@ export default function RekapNilai() {
   useEffect(() => {
     const qKelas = searchParams.get("kelas");
     const qMapel = searchParams.get("mapel");
+    const qView = searchParams.get("view");
     if (qKelas) setKelas(qKelas);
     if (qMapel) setMapel(qMapel);
+    if (qView) setView(qView);
   }, [searchParams]);
 
   useEffect(() => {
