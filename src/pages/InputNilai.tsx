@@ -365,9 +365,9 @@ export default function InputNilai() {
                         : "border-input bg-background hover:border-primary/40"
                   )}
                 >
-                  <div className="font-semibold">Otomatis ke KKM</div>
+                  <div className="font-semibold">Otomatis Tuntas (KKM)</div>
                   <div className="text-xs text-muted-foreground mt-0.5">
-                    Nilai di bawah KKM ditampilkan = KKM di rekap. Nilai asli tetap disimpan & terlihat oleh siswa.
+                    Nilai yang di bawah KKM otomatis dinaikkan jadi KKM di rekap.
                   </div>
                 </button>
                 <button
@@ -382,9 +382,9 @@ export default function InputNilai() {
                         : "border-input bg-background hover:border-primary/40"
                   )}
                 >
-                  <div className="font-semibold">Apa Adanya</div>
+                  <div className="font-semibold">Nilai Murni (Asli)</div>
                   <div className="text-xs text-muted-foreground mt-0.5">
-                    Nilai masuk ke rekap persis seperti yang diinputkan, tanpa penyesuaian KKM.
+                    Nilai disimpan apa adanya sesuai hasil siswa tanpa dinaikkan.
                   </div>
                 </button>
               </div>
@@ -651,7 +651,7 @@ export default function InputNilai() {
                   {showNamaPenilaian && (
                     <li><span className="text-muted-foreground">Nama Penilaian:</span> <span className="font-semibold">{namaPenilaian || jenis}</span></li>
                   )}
-                  <li><span className="text-muted-foreground">KKM:</span> <span className="font-semibold">{kkm}{autoKkm === true ? " (Otomatis ke KKM)" : autoKkm === false ? " (Apa Adanya)" : ""}</span></li>
+                  <li><span className="text-muted-foreground">KKM:</span> <span className="font-semibold">{kkm}{autoKkm === true ? " (Otomatis Tuntas / KKM)" : autoKkm === false ? " (Nilai Murni / Asli)" : ""}</span></li>
                   <li><span className="text-muted-foreground">Jumlah Nilai:</span> <span className="font-semibold text-primary">{filledCount} dari {students.length} siswa</span></li>
                 </ul>
                 {isDuplicateName && (
