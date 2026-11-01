@@ -24,12 +24,14 @@ export default function InputNilai() {
   const [jenis, setJenis] = useState("");
   const [namaPenilaian, setNamaPenilaian] = useState("");
   const [kkm, setKkm] = useState("75");
-  const [autoKkm, setAutoKkm] = useState(true);
+  const [autoKkm, setAutoKkm] = useState<boolean | null>(null);
   const [scores, setScores] = useState<Record<string, string>>({});
   const [visible, setVisible] = useState<Record<string, boolean>>({});
   const [batchText, setBatchText] = useState("");
   const [csvFile, setCsvFile] = useState<File | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const modeKkmRef = useRef<HTMLDivElement>(null);
+  const [modeKkmError, setModeKkmError] = useState(false);
   const [saving, setSaving] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
 
@@ -73,7 +75,7 @@ export default function InputNilai() {
         const nilaiAsli = (raw === "" || isNaN(parsed)) ? -1 : parsed;
         const kkmVal = parseFloat(kkm) || 75;
         // Auto-detect: for SUMATIF/STS/SAS, if below KKM and autoKkm is enabled, show KKM in rekap but keep original for student
-        const isBelowKkm = autoKkm && nilaiAsli >= 0 && nilaiAsli < kkmVal && ["FORMATIF", "SUMATIF", "STS", "SAS"].includes(jenis);
+        const isBelowKkm = autoKkm === true && nilaiAsli >= 0 && nilaiAsli < kkmVal && ["FORMATIF", "SUMATIF", "STS", "SAS"].includes(jenis);
         return {
           kelas_id: kelasObj.id,
           mapel_id: mapelObj.id,
@@ -113,6 +115,14 @@ export default function InputNilai() {
   const requestSave = () => {
     if (!kelas || !mapel || !jenis) {
       toast({ title: "Lengkapi data", description: "Pilih kelas, mata pelajaran, dan jenis penilaian terlebih dahulu", variant: "destructive" });
+      return;
+    }
+    // Validasi: Mode Nilai di Bawah KKM wajib dipilih
+    if (["FORMATIF", "SUMATIF", "STS", "SAS"].includes(jenis) && autoKkm === null) {
+      setModeKkmError(true);
+      toast({ title: "⚠️ Pilih Mode Nilai", description: "Silakan pilih Mode Nilai di Bawah KKM terlebih dahulu!", variant: "destructive" });
+      modeKkmRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+      setTimeout(() => setModeKkmError(false), 3000);
       return;
     }
     if (filledCount === 0) {
@@ -232,19 +242,21 @@ export default function InputNilai() {
             <input type="number" inputMode="numeric" pattern="[0-9]*" min={0} max={100} value={kkm} onChange={(e) => setKkm(e.target.value)} placeholder="75" className="w-full px-3 py-2.5 rounded-lg border bg-background text-sm" />
           </div>
           {["FORMATIF", "SUMATIF", "STS", "SAS"].includes(jenis) && (
-            <div className="sm:col-span-2 lg:col-span-4">
-              <label className="block text-xs font-semibold text-muted-foreground mb-1.5 uppercase tracking-wider">
-                Mode Nilai di Bawah KKM
+            <div ref={modeKkmRef} className={cn("sm:col-span-2 lg:col-span-4 transition-all duration-300", modeKkmError && "animate-pulse")}>
+              <label className={cn("block text-xs font-semibold mb-1.5 uppercase tracking-wider transition-colors", modeKkmError ? "text-red-500" : "text-muted-foreground")}>
+                Mode Nilai di Bawah KKM {autoKkm === null && <span className="text-red-400 normal-case text-[10px]">— Wajib dipilih</span>}
               </label>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <div className={cn("grid grid-cols-1 sm:grid-cols-2 gap-2 rounded-lg p-0.5 transition-all", modeKkmError && "ring-2 ring-red-500/70")}>
                 <button
                   type="button"
-                  onClick={() => setAutoKkm(true)}
+                  onClick={() => { setAutoKkm(true); setModeKkmError(false); }}
                   className={cn(
                     "text-left px-3 py-2.5 rounded-lg border text-sm transition-all",
-                    autoKkm
+                    autoKkm === true
                       ? "border-primary bg-primary/10 ring-1 ring-primary"
-                      : "border-input bg-background hover:border-primary/40"
+                      : autoKkm === null
+                        ? "border-input bg-background hover:border-primary/40 opacity-60"
+                        : "border-input bg-background hover:border-primary/40"
                   )}
                 >
                   <div className="font-semibold">Otomatis ke KKM</div>
@@ -254,12 +266,14 @@ export default function InputNilai() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => setAutoKkm(false)}
+                  onClick={() => { setAutoKkm(false); setModeKkmError(false); }}
                   className={cn(
                     "text-left px-3 py-2.5 rounded-lg border text-sm transition-all",
-                    !autoKkm
+                    autoKkm === false
                       ? "border-primary bg-primary/10 ring-1 ring-primary"
-                      : "border-input bg-background hover:border-primary/40"
+                      : autoKkm === null
+                        ? "border-input bg-background hover:border-primary/40 opacity-60"
+                        : "border-input bg-background hover:border-primary/40"
                   )}
                 >
                   <div className="font-semibold">Apa Adanya</div>
@@ -517,7 +531,7 @@ export default function InputNilai() {
                   {showNamaPenilaian && (
                     <li><span className="text-muted-foreground">Nama Penilaian:</span> <span className="font-semibold">{namaPenilaian || jenis}</span></li>
                   )}
-                  <li><span className="text-muted-foreground">KKM:</span> <span className="font-semibold">{kkm}{autoKkm ? " (auto-adjust aktif)" : ""}</span></li>
+                  <li><span className="text-muted-foreground">KKM:</span> <span className="font-semibold">{kkm}{autoKkm === true ? " (Otomatis ke KKM)" : autoKkm === false ? " (Apa Adanya)" : ""}</span></li>
                   <li><span className="text-muted-foreground">Jumlah Nilai:</span> <span className="font-semibold text-primary">{filledCount} dari {students.length} siswa</span></li>
                 </ul>
                 <p className="text-xs text-muted-foreground pt-1">Pastikan data sudah benar. Lanjutkan menyimpan?</p>
