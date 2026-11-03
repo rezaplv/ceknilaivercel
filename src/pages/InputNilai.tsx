@@ -146,9 +146,9 @@ export default function InputNilai() {
       .map(s => {
         const raw = (scores[s.user_id] || "").trim();
         const parsed = parseFloat(raw.replace(",", "."));
-        // If input is non-numeric (e.g. "", ".", "-"), save as -1 to indicate "Belum Mengerjakan"
-        const nilaiAsli = (raw === "" || isNaN(parsed)) ? -1 : parsed;
-        const kkmVal = parseFloat(kkm) || 75;
+        // If input is non-numeric (e.g. "", ".", "-"), save as -1 to indicate "Belum Mengerjakan", pastikan angka bulat
+        const nilaiAsli = (raw === "" || isNaN(parsed)) ? -1 : Math.round(parsed);
+        const kkmVal = Math.round(parseFloat(kkm)) || 75;
         // Auto-detect: for SUMATIF/STS/SAS, if below KKM and autoKkm is enabled, show KKM in rekap but keep original for student
         const isBelowKkm = autoKkm === true && nilaiAsli >= 0 && nilaiAsli < kkmVal && ["FORMATIF", "SUMATIF", "STS", "SAS"].includes(jenis);
         return {
@@ -250,7 +250,7 @@ export default function InputNilai() {
       toast({ title: "Belum ada nilai", description: "Isi minimal satu nilai siswa sebelum menyimpan", variant: "destructive" });
       return;
     }
-    // Validasi: Rentang Nilai Siswa (0 s/d 100)
+    // Validasi: Rentang Nilai Siswa (0 s/d 100) & harus angka bulat
     for (const s of students) {
       const raw = (scores[s.user_id] || "").trim();
       if (raw !== "" && raw !== "-" && raw !== ".") {
@@ -260,6 +260,19 @@ export default function InputNilai() {
           toast({
             title: "⚠️ Nilai Tidak Valid!",
             description: `Nilai untuk ${s.nama_lengkap} adalah "${raw}". Nilai harus berupa angka antara 0 sampai 100!`,
+            variant: "destructive",
+          });
+          studentInputRefs.current[s.user_id]?.scrollIntoView({ behavior: "smooth", block: "center" });
+          studentInputRefs.current[s.user_id]?.focus();
+          setTimeout(() => setInvalidStudentId(null), 4000);
+          return;
+        }
+        // Validasi angka bulat (tidak boleh desimal)
+        if (!Number.isInteger(parsed)) {
+          setInvalidStudentId(s.user_id);
+          toast({
+            title: "⚠️ Gunakan Angka Bulat!",
+            description: `Nilai untuk ${s.nama_lengkap} adalah "${raw}". Tidak boleh desimal — bulatkan ke ${Math.round(parsed)}.`,
             variant: "destructive",
           });
           studentInputRefs.current[s.user_id]?.scrollIntoView({ behavior: "smooth", block: "center" });
@@ -479,7 +492,12 @@ export default function InputNilai() {
                 <tr className="bg-muted/50">
                   <th className="text-left py-3 px-4 font-semibold text-muted-foreground">No</th>
                   <th className="text-left py-3 px-4 font-semibold text-muted-foreground">Nama Siswa</th>
-                  <th className="text-left py-3 px-4 font-semibold text-muted-foreground">Nilai</th>
+                  <th className="text-left py-3 px-4 font-semibold text-muted-foreground">
+                        <div className="flex flex-col gap-0.5">
+                          <span>Nilai</span>
+                          <span className="text-[10px] font-normal normal-case text-muted-foreground/70">Angka bulat 0–100</span>
+                        </div>
+                      </th>
                   {(!!jenis) && (
                     <th className="text-center py-3 px-4 font-semibold text-muted-foreground">
                       <div className="flex flex-col items-center gap-1">
@@ -516,7 +534,7 @@ export default function InputNilai() {
                       <input
                         ref={(el) => { studentInputRefs.current[s.user_id] = el; }}
                         type="text"
-                        inputMode="decimal"
+                        inputMode="numeric"
                         value={scores[s.user_id] || ""}
                         onChange={(e) => {
                           setScores({ ...scores, [s.user_id]: e.target.value });
@@ -527,7 +545,7 @@ export default function InputNilai() {
                           "w-24 px-3 py-1.5 rounded-lg border bg-background text-sm transition-all",
                           invalidStudentId === s.user_id && "border-destructive ring-2 ring-destructive/50 bg-destructive/10 font-bold text-destructive animate-pulse"
                         )}
-                        placeholder="0-100"
+                        placeholder="cth: 85"
                       />
                     </td>
                     {(!!jenis) && (
@@ -556,7 +574,7 @@ export default function InputNilai() {
           <div className="flex flex-col items-center text-center mb-6">
             <Upload className="w-12 h-12 text-muted-foreground mb-4" />
             <p className="font-semibold">Upload File CSV</p>
-            <p className="text-sm text-muted-foreground mt-1">Format: Nama Siswa, Nilai</p>
+            <p className="text-sm text-muted-foreground mt-1">Format: Nama Siswa, Nilai (angka bulat 0–100)</p>
           </div>
           <div className="flex items-center justify-center gap-2 mb-6">
             <button onClick={handleDownloadTemplate} className="flex items-center gap-2 px-4 py-2 rounded-lg border border-primary/30 text-primary text-sm font-medium hover:bg-primary/5 transition-colors">
@@ -566,7 +584,7 @@ export default function InputNilai() {
           </div>
           <input ref={fileInputRef} type="file" accept=".csv" onChange={(e) => { if (e.target.files?.[0]) handleCsvParse(e.target.files[0]); }} className="hidden" />
           <div onClick={() => fileInputRef.current?.click()} className="border-2 border-dashed border-input rounded-xl p-8 text-center cursor-pointer hover:border-primary/50 hover:bg-primary/5 transition-all">
-            {csvFile ? <p className="text-sm font-medium">{csvFile.name}</p> : <><p className="text-sm font-medium">Klik untuk memilih file</p><p className="text-xs text-muted-foreground mt-1">Format: .csv (Nama Siswa, Nilai{(!!jenis) ? ", Tampilkan" : ""})</p></>}
+            {csvFile ? <p className="text-sm font-medium">{csvFile.name}</p> : <><p className="text-sm font-medium">Klik untuk memilih file</p><p className="text-xs text-muted-foreground mt-1">Format: .csv (Nama Siswa, Nilai Bulat{(!!jenis) ? ", Tampilkan" : ""})</p></>}
           </div>
           {csvFile && Object.keys(scores).length > 0 && (
             <div className="mt-4 overflow-x-auto border rounded-lg">
@@ -636,7 +654,7 @@ export default function InputNilai() {
         <div className="bg-card border rounded-xl overflow-hidden">
           <div className="p-5 border-b space-y-3">
             <p className="text-sm text-muted-foreground">
-              Paste nilai dari spreadsheet (satu nilai per baris), sistem akan otomatis memetakan ke daftar siswa sesuai urutan.
+              Paste nilai dari spreadsheet (satu nilai angka bulat per baris), sistem akan otomatis memetakan ke daftar siswa sesuai urutan.
             </p>
             <textarea rows={5} value={batchText} onChange={(e) => {
               setBatchText(e.target.value);

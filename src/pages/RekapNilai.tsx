@@ -168,11 +168,19 @@ export default function RekapNilai() {
   const handleEditSave = async () => {
     if (!editing) return;
     const raw = editing.value.trim();
-    const parsed = parseFloat(raw);
+    const parsed = parseFloat(raw.replace(",", "."));
     const isNonNumeric = raw === "" || isNaN(parsed);
     const nilaiAsli = isNonNumeric ? -1 : parsed;
     if (!isNonNumeric && (nilaiAsli < 0 || nilaiAsli > 100)) {
       toast({ title: "Error", description: "Nilai harus antara 0-100, atau gunakan '.' / '-' untuk Belum Mengerjakan", variant: "destructive" });
+      return;
+    }
+    if (!isNonNumeric && !Number.isInteger(nilaiAsli)) {
+      toast({
+        title: "⚠️ Gunakan Angka Bulat!",
+        description: `Nilai "${raw}" tidak boleh desimal/koma. Silakan bulatkan ke ${Math.round(nilaiAsli)}.`,
+        variant: "destructive",
+      });
       return;
     }
     // For FORMATIF/SUMATIF/STS/SAS: check if it was previously auto-kkm (nilai_asli !== null)
@@ -269,6 +277,7 @@ export default function RekapNilai() {
         <div className="flex items-center justify-center gap-1">
           <input
             type="text"
+            inputMode="numeric"
             value={editing.value}
             onChange={(e) => setEditing({ ...editing, value: e.target.value })}
             onKeyDown={(e) => {
@@ -277,6 +286,7 @@ export default function RekapNilai() {
             }}
             autoFocus
             className="w-16 px-2 py-1 rounded border bg-background text-sm text-center"
+            placeholder="0-100"
             disabled={savingEdit}
           />
           <button onClick={handleEditSave} disabled={savingEdit} className="p-1 rounded hover:bg-green-100 text-green-600 transition-colors" title="Simpan">
