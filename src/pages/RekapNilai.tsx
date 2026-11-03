@@ -5,7 +5,8 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useAppSettings } from "@/contexts/AppSettingsContext";
 import { fetchScores, fetchKelasList, fetchMapelList, updateScoreValue, renameNamaPenilaian, snapshotAndDeleteScoresByJenis, fetchScoreArchive, restoreScoreArchive, purgeScoreArchive } from "@/lib/api";
 import { supabase } from "@/integrations/supabase/client";
-import { Trash2, Pencil, Check, X, FileSpreadsheet, FileText, FileDown, History, Undo2, Search } from "lucide-react";
+import { Trash2, Pencil, Check, X, FileSpreadsheet, FileText, FileDown, History, Undo2, Search, Sparkles } from "lucide-react";
+import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { toast } from "@/hooks/use-toast";
 import { exportToExcel, exportToPDF, exportToWord, type ExportData } from "@/lib/exportRekapNilai";
@@ -44,15 +45,43 @@ export default function RekapNilai() {
   const [editingHeader, setEditingHeader] = useState<{ jenis: string; oldName: string; newName: string } | null>(null);
   const [savingHeader, setSavingHeader] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const [highlightPenilaian, setHighlightPenilaian] = useState<string | null>(null);
+  const [isHighlighted, setIsHighlighted] = useState(false);
 
   useEffect(() => {
     const qKelas = searchParams.get("kelas");
     const qMapel = searchParams.get("mapel");
     const qView = searchParams.get("view");
+    const qPenilaian = searchParams.get("penilaian");
     if (qKelas) setKelas(qKelas);
     if (qMapel) setMapel(qMapel);
     if (qView) setView(qView);
+    if (qPenilaian) {
+      setHighlightPenilaian(qPenilaian);
+      setIsHighlighted(true);
+    }
   }, [searchParams]);
+
+  // Auto-scroll ke kolom penilaian yang baru diinput & sorot warnanya
+  useEffect(() => {
+    if (!highlightPenilaian || allScores.length === 0) return;
+    const scrollTimer = setTimeout(() => {
+      const safeId = `col-${encodeURIComponent(highlightPenilaian.toLowerCase().trim())}`;
+      const el = document.getElementById(safeId);
+      if (el) {
+        el.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "center" });
+      }
+    }, 350);
+
+    const fadeTimer = setTimeout(() => {
+      setIsHighlighted(false);
+    }, 6000);
+
+    return () => {
+      clearTimeout(scrollTimer);
+      clearTimeout(fadeTimer);
+    };
+  }, [highlightPenilaian, allScores]);
 
   useEffect(() => {
     Promise.all([fetchKelasList(), fetchMapelList()]).then(([k, m]) => {
@@ -423,28 +452,44 @@ export default function RekapNilai() {
           </div>
 
           {students.length > 0 && (
-            <div className="bg-card border rounded-xl p-4">
-              <div className="relative max-w-sm">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
-                <input
-                  type="text"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Cari nama siswa..."
-                  className="w-full pl-9 pr-8 py-2 rounded-lg border bg-background text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 transition-all"
-                />
-                {searchQuery && (
-                  <button
-                    onClick={() => setSearchQuery("")}
-                    className="absolute right-2.5 top-1/2 -translate-y-1/2 p-0.5 rounded hover:bg-muted text-muted-foreground transition-colors"
-                    title="Hapus pencarian"
-                  >
-                    <X className="w-3.5 h-3.5" />
-                  </button>
+            <div className="bg-card border rounded-xl p-4 space-y-3">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="relative max-w-sm flex-1 min-w-[240px]">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
+                  <input
+                    type="text"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    placeholder="Cari nama siswa..."
+                    className="w-full pl-9 pr-8 py-2 rounded-lg border bg-background text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 transition-all"
+                  />
+                  {searchQuery && (
+                    <button
+                      onClick={() => setSearchQuery("")}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 p-0.5 rounded hover:bg-muted text-muted-foreground transition-colors"
+                      title="Hapus pencarian"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+
+                {highlightPenilaian && (
+                  <div className="flex items-center gap-2 px-3.5 py-2 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-600 dark:text-amber-400 text-xs">
+                    <Sparkles className="w-4 h-4 text-amber-500 shrink-0 animate-pulse" />
+                    <span>Fokus Kolom: <strong>{highlightPenilaian}</strong></span>
+                    <button
+                      onClick={() => { setHighlightPenilaian(null); setIsHighlighted(false); }}
+                      className="ml-1 p-0.5 rounded hover:bg-amber-500/20 text-muted-foreground hover:text-foreground transition-colors"
+                      title="Tutup fokus"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
                 )}
               </div>
               {searchQuery && (
-                <p className="text-xs text-muted-foreground mt-2">
+                <p className="text-xs text-muted-foreground">
                   Menampilkan {filteredStudents.length} dari {students.length} siswa
                 </p>
               )}
@@ -458,84 +503,128 @@ export default function RekapNilai() {
                   <tr className="bg-muted/50">
                     <th className="text-left py-3 px-4 font-semibold text-muted-foreground sticky left-0 z-20 bg-muted/50 min-w-[48px]">No</th>
                     <th className="text-left py-3 px-4 font-semibold text-muted-foreground sticky left-[48px] z-20 bg-muted/50 min-w-[180px] after:content-[''] after:absolute after:right-0 after:top-0 after:bottom-0 after:w-px after:bg-border">Nama Siswa</th>
-                    {(view === "ALL" || view === "FORMATIF") && formatifNames.map((name) => (
-                      <th key={`fh-${name}`} className="text-center py-3 px-4 font-semibold text-muted-foreground text-xs">
-                        {editingHeader?.jenis === "FORMATIF" && editingHeader?.oldName === name ? (
-                          <div className="flex items-center justify-center gap-1">
-                            <input
-                              type="text"
-                              value={editingHeader.newName}
-                              onChange={(e) => setEditingHeader({ ...editingHeader, newName: e.target.value })}
-                              onKeyDown={(e) => {
-                                if (e.key === "Enter") handleHeaderRename();
-                                if (e.key === "Escape") setEditingHeader(null);
-                              }}
-                              autoFocus
-                              className="w-32 px-2 py-1 rounded border bg-background text-xs text-center"
-                              disabled={savingHeader}
-                            />
-                            <button onClick={handleHeaderRename} disabled={savingHeader} className="p-1 rounded hover:bg-accent text-primary transition-colors" title="Simpan">
-                              <Check className="h-3.5 w-3.5" />
+                    {(view === "ALL" || view === "FORMATIF") && formatifNames.map((name) => {
+                      const isTarget = highlightPenilaian && highlightPenilaian.toLowerCase().trim() === name.toLowerCase().trim();
+                      return (
+                        <th
+                          key={`fh-${name}`}
+                          id={`col-${encodeURIComponent(name.toLowerCase().trim())}`}
+                          className={cn(
+                            "text-center py-3 px-4 font-semibold text-muted-foreground text-xs transition-all duration-500",
+                            isTarget && isHighlighted && "bg-amber-500/25 text-amber-600 dark:text-amber-400 ring-2 ring-amber-500 shadow-lg shadow-amber-500/20 font-bold animate-pulse",
+                            isTarget && !isHighlighted && "bg-amber-500/10 text-amber-600 dark:text-amber-400 font-bold"
+                          )}
+                        >
+                          {editingHeader?.jenis === "FORMATIF" && editingHeader?.oldName === name ? (
+                            <div className="flex items-center justify-center gap-1">
+                              <input
+                                type="text"
+                                value={editingHeader.newName}
+                                onChange={(e) => setEditingHeader({ ...editingHeader, newName: e.target.value })}
+                                onKeyDown={(e) => {
+                                  if (e.key === "Enter") handleHeaderRename();
+                                  if (e.key === "Escape") setEditingHeader(null);
+                                }}
+                                autoFocus
+                                className="w-32 px-2 py-1 rounded border bg-background text-xs text-center"
+                                disabled={savingHeader}
+                              />
+                              <button onClick={handleHeaderRename} disabled={savingHeader} className="p-1 rounded hover:bg-accent text-primary transition-colors" title="Simpan">
+                                <Check className="h-3.5 w-3.5" />
+                              </button>
+                              <button onClick={() => setEditingHeader(null)} disabled={savingHeader} className="p-1 rounded hover:bg-accent text-destructive transition-colors" title="Batal">
+                                <X className="h-3.5 w-3.5" />
+                              </button>
+                            </div>
+                          ) : (
+                            <button
+                              onClick={() => setEditingHeader({ jenis: "FORMATIF", oldName: name, newName: name })}
+                              className="group/hdr inline-flex items-center gap-1 hover:text-primary transition-colors cursor-pointer"
+                              title="Klik untuk rename"
+                            >
+                              <span>{view === "FORMATIF" ? name : `${getJenisPrefix("FORMATIF")}: ${name}`}</span>
+                              <Pencil className="h-3 w-3 opacity-0 group-hover/hdr:opacity-100 transition-opacity" />
                             </button>
-                            <button onClick={() => setEditingHeader(null)} disabled={savingHeader} className="p-1 rounded hover:bg-accent text-destructive transition-colors" title="Batal">
-                              <X className="h-3.5 w-3.5" />
-                            </button>
-                          </div>
-                        ) : (
-                          <button
-                            onClick={() => setEditingHeader({ jenis: "FORMATIF", oldName: name, newName: name })}
-                            className="group/hdr inline-flex items-center gap-1 hover:text-primary transition-colors cursor-pointer"
-                            title="Klik untuk rename"
-                          >
-                            <span>{view === "FORMATIF" ? name : `${getJenisPrefix("FORMATIF")}: ${name}`}</span>
-                            <Pencil className="h-3 w-3 opacity-0 group-hover/hdr:opacity-100 transition-opacity" />
-                          </button>
-                        )}
-                      </th>
-                    ))}
+                          )}
+                        </th>
+                      );
+                    })}
                     {(view === "ALL" || view === "FORMATIF") && formatifNames.length >= 1 && (
                       <th className="text-center py-3 px-4 font-semibold text-blue-600 text-xs">Rata-rata {getJenisPrefix("FORMATIF")}</th>
                     )}
-                    {(view === "ALL" || view === "SUMATIF") && sumatifNames.map((name) => (
-                      <th key={`sh-${name}`} className="text-center py-3 px-4 font-semibold text-muted-foreground text-xs">
-                        {editingHeader?.jenis === "SUMATIF" && editingHeader?.oldName === name ? (
-                          <div className="flex items-center justify-center gap-1">
-                            <input
-                              type="text"
-                              value={editingHeader.newName}
-                              onChange={(e) => setEditingHeader({ ...editingHeader, newName: e.target.value })}
-                              onKeyDown={(e) => {
-                                if (e.key === "Enter") handleHeaderRename();
-                                if (e.key === "Escape") setEditingHeader(null);
-                              }}
-                              autoFocus
-                              className="w-32 px-2 py-1 rounded border bg-background text-xs text-center"
-                              disabled={savingHeader}
-                            />
-                            <button onClick={handleHeaderRename} disabled={savingHeader} className="p-1 rounded hover:bg-accent text-primary transition-colors" title="Simpan">
-                              <Check className="h-3.5 w-3.5" />
+                    {(view === "ALL" || view === "SUMATIF") && sumatifNames.map((name) => {
+                      const isTarget = highlightPenilaian && highlightPenilaian.toLowerCase().trim() === name.toLowerCase().trim();
+                      return (
+                        <th
+                          key={`sh-${name}`}
+                          id={`col-${encodeURIComponent(name.toLowerCase().trim())}`}
+                          className={cn(
+                            "text-center py-3 px-4 font-semibold text-muted-foreground text-xs transition-all duration-500",
+                            isTarget && isHighlighted && "bg-amber-500/25 text-amber-600 dark:text-amber-400 ring-2 ring-amber-500 shadow-lg shadow-amber-500/20 font-bold animate-pulse",
+                            isTarget && !isHighlighted && "bg-amber-500/10 text-amber-600 dark:text-amber-400 font-bold"
+                          )}
+                        >
+                          {editingHeader?.jenis === "SUMATIF" && editingHeader?.oldName === name ? (
+                            <div className="flex items-center justify-center gap-1">
+                              <input
+                                type="text"
+                                value={editingHeader.newName}
+                                onChange={(e) => setEditingHeader({ ...editingHeader, newName: e.target.value })}
+                                onKeyDown={(e) => {
+                                  if (e.key === "Enter") handleHeaderRename();
+                                  if (e.key === "Escape") setEditingHeader(null);
+                                }}
+                                autoFocus
+                                className="w-32 px-2 py-1 rounded border bg-background text-xs text-center"
+                                disabled={savingHeader}
+                              />
+                              <button onClick={handleHeaderRename} disabled={savingHeader} className="p-1 rounded hover:bg-accent text-primary transition-colors" title="Simpan">
+                                <Check className="h-3.5 w-3.5" />
+                              </button>
+                              <button onClick={() => setEditingHeader(null)} disabled={savingHeader} className="p-1 rounded hover:bg-accent text-destructive transition-colors" title="Batal">
+                                <X className="h-3.5 w-3.5" />
+                              </button>
+                            </div>
+                          ) : (
+                            <button
+                              onClick={() => setEditingHeader({ jenis: "SUMATIF", oldName: name, newName: name })}
+                              className="group/hdr inline-flex items-center gap-1 hover:text-primary transition-colors cursor-pointer"
+                              title="Klik untuk rename"
+                            >
+                              <span>{view === "SUMATIF" ? name : `${getJenisPrefix("SUMATIF")}: ${name}`}</span>
+                              <Pencil className="h-3 w-3 opacity-0 group-hover/hdr:opacity-100 transition-opacity" />
                             </button>
-                            <button onClick={() => setEditingHeader(null)} disabled={savingHeader} className="p-1 rounded hover:bg-accent text-destructive transition-colors" title="Batal">
-                              <X className="h-3.5 w-3.5" />
-                            </button>
-                          </div>
-                        ) : (
-                          <button
-                            onClick={() => setEditingHeader({ jenis: "SUMATIF", oldName: name, newName: name })}
-                            className="group/hdr inline-flex items-center gap-1 hover:text-primary transition-colors cursor-pointer"
-                            title="Klik untuk rename"
-                          >
-                            <span>{view === "SUMATIF" ? name : `${getJenisPrefix("SUMATIF")}: ${name}`}</span>
-                            <Pencil className="h-3 w-3 opacity-0 group-hover/hdr:opacity-100 transition-opacity" />
-                          </button>
-                        )}
-                      </th>
-                    ))}
+                          )}
+                        </th>
+                      );
+                    })}
                     {(view === "ALL" || view === "SUMATIF") && sumatifNames.length >= 1 && (
                       <th className="text-center py-3 px-4 font-semibold text-blue-600 text-xs">Rata-rata {getJenisPrefix("SUMATIF")}</th>
                     )}
-                    {(view === "ALL" || view === "STS") && <th className="text-center py-3 px-4 font-semibold text-muted-foreground">STS</th>}
-                    {(view === "ALL" || view === "SAS") && <th className="text-center py-3 px-4 font-semibold text-muted-foreground">SAS</th>}
+                    {(view === "ALL" || view === "STS") && (
+                      <th
+                        id="col-sts"
+                        className={cn(
+                          "text-center py-3 px-4 font-semibold text-muted-foreground transition-all duration-500",
+                          highlightPenilaian?.toUpperCase().trim() === "STS" && isHighlighted && "bg-amber-500/25 text-amber-600 dark:text-amber-400 ring-2 ring-amber-500 shadow-lg shadow-amber-500/20 font-bold animate-pulse",
+                          highlightPenilaian?.toUpperCase().trim() === "STS" && !isHighlighted && "bg-amber-500/10 text-amber-600 dark:text-amber-400 font-bold"
+                        )}
+                      >
+                        STS
+                      </th>
+                    )}
+                    {(view === "ALL" || view === "SAS") && (
+                      <th
+                        id="col-sas"
+                        className={cn(
+                          "text-center py-3 px-4 font-semibold text-muted-foreground transition-all duration-500",
+                          highlightPenilaian?.toUpperCase().trim() === "SAS" && isHighlighted && "bg-amber-500/25 text-amber-600 dark:text-amber-400 ring-2 ring-amber-500 shadow-lg shadow-amber-500/20 font-bold animate-pulse",
+                          highlightPenilaian?.toUpperCase().trim() === "SAS" && !isHighlighted && "bg-amber-500/10 text-amber-600 dark:text-amber-400 font-bold"
+                        )}
+                      >
+                        SAS
+                      </th>
+                    )}
                     {view === "ALL" && <th className="text-center py-3 px-4 font-semibold text-primary">Nilai Akhir</th>}
                   </tr>
                 </thead>
@@ -555,20 +644,64 @@ export default function RekapNilai() {
                       <tr key={st.id} className="border-t hover:bg-muted/30 transition-colors group">
                         <td className="py-3 px-4 text-muted-foreground sticky left-0 z-10 bg-card group-hover:bg-muted/30 transition-colors">{i + 1}</td>
                         <td className="py-3 px-4 font-medium sticky left-[48px] z-10 bg-card group-hover:bg-muted/30 transition-colors after:content-[''] after:absolute after:right-0 after:top-0 after:bottom-0 after:w-px after:bg-border">{st.nama}</td>
-                        {(view === "ALL" || view === "FORMATIF") && formatifNames.map((name) => (
-                          <td key={`f-${st.id}-${name}`} className="py-3 px-4 text-center">{renderEditableNilai(getScore(st.id, "FORMATIF", name))}</td>
-                        ))}
+                        {(view === "ALL" || view === "FORMATIF") && formatifNames.map((name) => {
+                          const isTarget = highlightPenilaian && highlightPenilaian.toLowerCase().trim() === name.toLowerCase().trim();
+                          return (
+                            <td
+                              key={`f-${st.id}-${name}`}
+                              className={cn(
+                                "py-3 px-4 text-center transition-colors duration-500",
+                                isTarget && isHighlighted && "bg-amber-500/15 font-semibold",
+                                isTarget && !isHighlighted && "bg-amber-500/5 font-medium"
+                              )}
+                            >
+                              {renderEditableNilai(getScore(st.id, "FORMATIF", name))}
+                            </td>
+                          );
+                        })}
                         {(view === "ALL" || view === "FORMATIF") && formatifNames.length >= 1 && (
                           <td className="py-3 px-4 text-center font-semibold text-blue-600">{avgF !== null ? avgF.toFixed(1) : "-"}</td>
                         )}
-                        {(view === "ALL" || view === "SUMATIF") && sumatifNames.map((name) => (
-                          <td key={`s-${st.id}-${name}`} className="py-3 px-4 text-center">{renderEditableNilai(getScore(st.id, "SUMATIF", name))}</td>
-                        ))}
+                        {(view === "ALL" || view === "SUMATIF") && sumatifNames.map((name) => {
+                          const isTarget = highlightPenilaian && highlightPenilaian.toLowerCase().trim() === name.toLowerCase().trim();
+                          return (
+                            <td
+                              key={`s-${st.id}-${name}`}
+                              className={cn(
+                                "py-3 px-4 text-center transition-colors duration-500",
+                                isTarget && isHighlighted && "bg-amber-500/15 font-semibold",
+                                isTarget && !isHighlighted && "bg-amber-500/5 font-medium"
+                              )}
+                            >
+                              {renderEditableNilai(getScore(st.id, "SUMATIF", name))}
+                            </td>
+                          );
+                        })}
                         {(view === "ALL" || view === "SUMATIF") && sumatifNames.length >= 1 && (
                           <td className="py-3 px-4 text-center font-semibold text-blue-600">{avgS !== null ? avgS.toFixed(1) : "-"}</td>
                         )}
-                        {(view === "ALL" || view === "STS") && <td className="py-3 px-4 text-center">{renderEditableNilai(stsEntry)}</td>}
-                        {(view === "ALL" || view === "SAS") && <td className="py-3 px-4 text-center">{renderEditableNilai(sasEntry)}</td>}
+                        {(view === "ALL" || view === "STS") && (
+                          <td
+                            className={cn(
+                              "py-3 px-4 text-center transition-colors duration-500",
+                              highlightPenilaian?.toUpperCase().trim() === "STS" && isHighlighted && "bg-amber-500/15 font-semibold",
+                              highlightPenilaian?.toUpperCase().trim() === "STS" && !isHighlighted && "bg-amber-500/5 font-medium"
+                            )}
+                          >
+                            {renderEditableNilai(stsEntry)}
+                          </td>
+                        )}
+                        {(view === "ALL" || view === "SAS") && (
+                          <td
+                            className={cn(
+                              "py-3 px-4 text-center transition-colors duration-500",
+                              highlightPenilaian?.toUpperCase().trim() === "SAS" && isHighlighted && "bg-amber-500/15 font-semibold",
+                              highlightPenilaian?.toUpperCase().trim() === "SAS" && !isHighlighted && "bg-amber-500/5 font-medium"
+                            )}
+                          >
+                            {renderEditableNilai(sasEntry)}
+                          </td>
+                        )}
                         {view === "ALL" && <td className="py-3 px-4 text-center font-bold text-primary">{na ?? "-"}</td>}
                       </tr>
                     );

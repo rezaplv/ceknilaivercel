@@ -811,8 +811,14 @@ export default function InputNilai() {
                 const k = successDialog?.kelas;
                 const m = successDialog?.mapel;
                 const j = successDialog?.jenis;
+                const p = successDialog?.namaPenilaian;
                 setSuccessDialog(null);
-                navigate(`/rekap-nilai?kelas=${encodeURIComponent(k || "")}&mapel=${encodeURIComponent(m || "")}&view=${encodeURIComponent(j || "")}`);
+                const params = new URLSearchParams();
+                if (k) params.set("kelas", k);
+                if (m) params.set("mapel", m);
+                if (j) params.set("view", j);
+                if (p) params.set("penilaian", p);
+                navigate(`/rekap-nilai?${params.toString()}`);
               }}
               className="w-full sm:w-auto bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold gap-1.5 shadow-md shadow-emerald-600/30"
             >
