@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { usePageTitle } from "@/hooks/usePageTitle";
 import { useAuth } from "@/contexts/AuthContext";
@@ -95,6 +95,39 @@ export default function InputNilai() {
     }
   }, [kelas, mapel, jenis, kelasList, mapelList]);
 
+  // Poin 2: Pengaman data belum disimpan — warn user saat refresh/close tab
+  const hasUnsaved = students.some(s => scores[s.user_id] && scores[s.user_id].trim() !== "");
+  useEffect(() => {
+    if (!hasUnsaved) return;
+    const handler = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      // Chrome requires returnValue
+      e.returnValue = "";
+    };
+    window.addEventListener("beforeunload", handler);
+    return () => window.removeEventListener("beforeunload", handler);
+  }, [hasUnsaved]);
+
+  // Poin 1: Navigasi keyboard Enter/ArrowDown/ArrowUp antar input siswa
+  const handleStudentKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLInputElement>, studentIndex: number) => {
+      if (e.key === "Enter" || e.key === "ArrowDown") {
+        e.preventDefault();
+        const nextStudent = students[studentIndex + 1];
+        if (nextStudent) {
+          studentInputRefs.current[nextStudent.user_id]?.focus();
+        }
+      } else if (e.key === "ArrowUp") {
+        e.preventDefault();
+        const prevStudent = students[studentIndex - 1];
+        if (prevStudent) {
+          studentInputRefs.current[prevStudent.user_id]?.focus();
+        }
+      }
+    },
+    [students]
+  );
+
   if (!user || user.role === "SISWA") return null;
 
   const kelasOptions = user.role === "GURU" && user.kelas?.length ? kelasList.filter(k => user.kelas!.includes(k.nama)) : kelasList;
@@ -164,6 +197,22 @@ export default function InputNilai() {
   };
 
   const filledCount = students.filter(s => scores[s.user_id] && scores[s.user_id].trim() !== "").length;
+
+  // Poin 2: Also block browser back/forward navigation
+  useEffect(() => {
+    if (!hasUnsaved) return;
+    const handler = (e: PopStateEvent) => {
+      const leave = window.confirm("⚠️ Ada nilai yang belum disimpan!\n\nJika keluar, data nilai yang sudah diisi akan hilang.\nYakin ingin keluar?");
+      if (!leave) {
+        // Push back to current page to cancel navigation
+        window.history.pushState(null, "", window.location.href);
+      }
+    };
+    // Push a state so we can intercept back
+    window.history.pushState(null, "", window.location.href);
+    window.addEventListener("popstate", handler);
+    return () => window.removeEventListener("popstate", handler);
+  }, [hasUnsaved]);
 
   const requestSave = () => {
     if (!kelas || !mapel || !jenis) {
@@ -473,6 +522,7 @@ export default function InputNilai() {
                           setScores({ ...scores, [s.user_id]: e.target.value });
                           if (invalidStudentId === s.user_id) setInvalidStudentId(null);
                         }}
+                        onKeyDown={(e) => handleStudentKeyDown(e, i)}
                         className={cn(
                           "w-24 px-3 py-1.5 rounded-lg border bg-background text-sm transition-all",
                           invalidStudentId === s.user_id && "border-destructive ring-2 ring-destructive/50 bg-destructive/10 font-bold text-destructive animate-pulse"

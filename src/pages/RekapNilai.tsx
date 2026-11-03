@@ -5,7 +5,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useAppSettings } from "@/contexts/AppSettingsContext";
 import { fetchScores, fetchKelasList, fetchMapelList, updateScoreValue, renameNamaPenilaian, snapshotAndDeleteScoresByJenis, fetchScoreArchive, restoreScoreArchive, purgeScoreArchive } from "@/lib/api";
 import { supabase } from "@/integrations/supabase/client";
-import { Trash2, Pencil, Check, X, FileSpreadsheet, FileText, FileDown, History, Undo2 } from "lucide-react";
+import { Trash2, Pencil, Check, X, FileSpreadsheet, FileText, FileDown, History, Undo2, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "@/hooks/use-toast";
 import { exportToExcel, exportToPDF, exportToWord, type ExportData } from "@/lib/exportRekapNilai";
@@ -43,6 +43,7 @@ export default function RekapNilai() {
   const [savingEdit, setSavingEdit] = useState(false);
   const [editingHeader, setEditingHeader] = useState<{ jenis: string; oldName: string; newName: string } | null>(null);
   const [savingHeader, setSavingHeader] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
 
   useEffect(() => {
     const qKelas = searchParams.get("kelas");
@@ -214,6 +215,12 @@ export default function RekapNilai() {
     () => [...new Set(allScores.filter((s: any) => s.jenis === "SUMATIF").map((s: any) => s.nama_penilaian))],
     [allScores]
   );
+
+  const filteredStudents = useMemo(() => {
+    if (!searchQuery.trim()) return students;
+    const q = searchQuery.toLowerCase().trim();
+    return students.filter(s => s.nama.toLowerCase().includes(q));
+  }, [students, searchQuery]);
 
   if (!user || user.role === "SISWA") return null;
 
@@ -405,6 +412,35 @@ export default function RekapNilai() {
             </div>
           </div>
 
+          {students.length > 0 && (
+            <div className="bg-card border rounded-xl p-4">
+              <div className="relative max-w-sm">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="Cari nama siswa..."
+                  className="w-full pl-9 pr-8 py-2 rounded-lg border bg-background text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 transition-all"
+                />
+                {searchQuery && (
+                  <button
+                    onClick={() => setSearchQuery("")}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 p-0.5 rounded hover:bg-muted text-muted-foreground transition-colors"
+                    title="Hapus pencarian"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
+              {searchQuery && (
+                <p className="text-xs text-muted-foreground mt-2">
+                  Menampilkan {filteredStudents.length} dari {students.length} siswa
+                </p>
+              )}
+            </div>
+          )}
+
           <div className="bg-card border rounded-xl overflow-hidden">
             <div className="overflow-x-auto">
               <table className="w-full text-sm border-collapse">
@@ -494,7 +530,7 @@ export default function RekapNilai() {
                   </tr>
                 </thead>
                 <tbody>
-                  {students.map((st, i) => {
+                  {filteredStudents.map((st, i) => {
                     const fScores = getScoresFor(st.id, "FORMATIF");
                     const sScores = getScoresFor(st.id, "SUMATIF");
                     const avgF = avg(fScores.map((s: any) => Number(s.nilai)));
@@ -529,6 +565,9 @@ export default function RekapNilai() {
                   })}
                   {students.length === 0 && (
                     <tr><td colSpan={20} className="py-8 text-center text-muted-foreground">Belum ada data nilai untuk kelas dan mapel ini</td></tr>
+                  )}
+                  {students.length > 0 && filteredStudents.length === 0 && searchQuery && (
+                    <tr><td colSpan={20} className="py-8 text-center text-muted-foreground">Tidak ada siswa dengan nama "{searchQuery}"</td></tr>
                   )}
                   {students.length > 0 && view === "FORMATIF" && formatifNames.length === 0 && (
                     <tr><td colSpan={20} className="py-8 text-center text-muted-foreground">Belum ada data nilai Tugas (Formatif) untuk kelas dan mapel ini</td></tr>
