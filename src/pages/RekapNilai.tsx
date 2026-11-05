@@ -5,7 +5,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useAppSettings } from "@/contexts/AppSettingsContext";
 import { fetchScores, fetchKelasList, fetchMapelList, updateScoreValue, renameNamaPenilaian, snapshotAndDeleteScoresByJenis, fetchScoreArchive, restoreScoreArchive, purgeScoreArchive } from "@/lib/api";
 import { supabase } from "@/integrations/supabase/client";
-import { Trash2, Pencil, Check, X, FileSpreadsheet, FileText, FileDown, History, Undo2, Search, Sparkles } from "lucide-react";
+import { Trash2, Pencil, Check, X, FileSpreadsheet, FileText, FileDown, History, Undo2, Search, Sparkles, AlertTriangle, ChevronDown, ChevronUp } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { toast } from "@/hooks/use-toast";
@@ -47,6 +47,8 @@ export default function RekapNilai() {
   const [searchQuery, setSearchQuery] = useState("");
   const [highlightPenilaian, setHighlightPenilaian] = useState<string | null>(null);
   const [isHighlighted, setIsHighlighted] = useState(false);
+  const [showMissingDetail, setShowMissingDetail] = useState(true);
+  const [highlightStudentId, setHighlightStudentId] = useState<string | null>(null);
 
   useEffect(() => {
     const qKelas = searchParams.get("kelas");
@@ -259,6 +261,56 @@ export default function RekapNilai() {
     return students.filter(s => s.nama.toLowerCase().includes(q));
   }, [students, searchQuery]);
 
+  // Deteksi siswa yang belum ada nilainya per penilaian
+  const missingByAssessment = useMemo(() => {
+    if (students.length === 0) return [];
+    const result: { jenis: string; name: string; missing: { id: string; nama: string; scoreId?: string }[] }[] = [];
+
+    const findMissing = (jenis: string, namaPenilaian?: string) => {
+      return students
+        .map(st => {
+          const score = namaPenilaian
+            ? allScores.find((s: any) => s.student_id === st.id && s.jenis === jenis && s.nama_penilaian === namaPenilaian)
+            : allScores.find((s: any) => s.student_id === st.id && s.jenis === jenis);
+          const isMissing = !score || Number(score.nilai) < 0;
+          return isMissing ? { id: st.id, nama: st.nama, scoreId: score?.id } : null;
+        })
+        .filter(Boolean) as { id: string; nama: string; scoreId?: string }[];
+    };
+
+    if (view === "ALL" || view === "FORMATIF") {
+      formatifNames.forEach(name => {
+        const m = findMissing("FORMATIF", name);
+        if (m.length > 0) result.push({ jenis: "FORMATIF", name, missing: m });
+      });
+    }
+    if (view === "ALL" || view === "SUMATIF") {
+      sumatifNames.forEach(name => {
+        const m = findMissing("SUMATIF", name);
+        if (m.length > 0) result.push({ jenis: "SUMATIF", name, missing: m });
+      });
+    }
+    if (view === "ALL" || view === "STS") {
+      const m = findMissing("STS");
+      if (m.length > 0) result.push({ jenis: "STS", name: "STS", missing: m });
+    }
+    if (view === "ALL" || view === "SAS") {
+      const m = findMissing("SAS");
+      if (m.length > 0) result.push({ jenis: "SAS", name: "SAS", missing: m });
+    }
+
+    // Jika highlightPenilaian aktif, prioritaskan penilaian itu di urutan pertama
+    if (highlightPenilaian) {
+      result.sort((a, b) => {
+        const aMatch = a.name.toLowerCase().trim() === highlightPenilaian.toLowerCase().trim() ? 0 : 1;
+        const bMatch = b.name.toLowerCase().trim() === highlightPenilaian.toLowerCase().trim() ? 0 : 1;
+        return aMatch - bMatch;
+      });
+    }
+
+    return result;
+  }, [students, allScores, view, formatifNames, sumatifNames, highlightPenilaian]);
+
   if (!user || user.role === "SISWA") return null;
 
   const kelasOptions = user.role === "GURU" && user.kelas?.length ? kelasList.filter(k => user.kelas!.includes(k.nama)) : kelasList;
@@ -292,6 +344,37 @@ export default function RekapNilai() {
       toast({ title: "Berhasil", description: `File ${type.toUpperCase()} berhasil diunduh` });
     } catch (e: any) {
       toast({ title: "Gagal", description: e.message, variant: "destructive" });
+    }
+  };
+
+  // Klik nama siswa di banner "belum dinilai" → scroll ke baris + buka edit
+  const handleMissingStudentClick = (studentId: string, assessmentName: string, scoreId?: string) => {
+    // Highlight row
+    setHighlightStudentId(studentId);
+    setTimeout(() => setHighlightStudentId(null), 4000);
+
+    // Scroll ke baris siswa
+    const rowEl = document.getElementById(`row-${studentId}`);
+    if (rowEl) {
+      rowEl.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
+
+    // Scroll ke kolom penilaian (horizontal)
+    setTimeout(() => {
+      const colKey = ["STS", "SAS"].includes(assessmentName.toUpperCase())
+        ? `col-${assessmentName.toLowerCase()}`
+        : `col-${encodeURIComponent(assessmentName.toLowerCase().trim())}`;
+      const colEl = document.getElementById(colKey);
+      if (colEl) {
+        colEl.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "center" });
+      }
+    }, 200);
+
+    // Auto-buka mode edit jika score entry sudah ada
+    if (scoreId) {
+      setTimeout(() => {
+        setEditing({ scoreId, value: "" });
+      }, 500);
     }
   };
 
@@ -496,6 +579,66 @@ export default function RekapNilai() {
             </div>
           )}
 
+          {missingByAssessment.length > 0 && (
+            <div className="bg-card border border-amber-500/30 rounded-xl overflow-hidden">
+              <button
+                onClick={() => setShowMissingDetail(!showMissingDetail)}
+                className="w-full flex items-center justify-between gap-2 px-4 py-3 text-left hover:bg-muted/30 transition-colors"
+              >
+                <div className="flex items-center gap-2 text-sm">
+                  <AlertTriangle className="w-4 h-4 text-amber-500 shrink-0" />
+                  <span className="font-semibold text-amber-600 dark:text-amber-400">
+                    {missingByAssessment.reduce((sum, a) => sum + a.missing.length, 0)} siswa belum dinilai
+                  </span>
+                  <span className="text-muted-foreground text-xs">
+                    di {missingByAssessment.length} penilaian — klik nama untuk langsung isi nilai
+                  </span>
+                </div>
+                {showMissingDetail
+                  ? <ChevronUp className="w-4 h-4 text-muted-foreground shrink-0" />
+                  : <ChevronDown className="w-4 h-4 text-muted-foreground shrink-0" />
+                }
+              </button>
+              {showMissingDetail && (
+                <div className="px-4 pb-4 space-y-3 border-t border-amber-500/20 pt-3">
+                  {missingByAssessment.map((item) => {
+                    const isActive = highlightPenilaian && highlightPenilaian.toLowerCase().trim() === item.name.toLowerCase().trim();
+                    return (
+                      <div key={`missing-${item.jenis}-${item.name}`}>
+                        <p className={cn(
+                          "text-xs font-semibold mb-1.5 uppercase tracking-wider",
+                          isActive ? "text-amber-600 dark:text-amber-400" : "text-muted-foreground"
+                        )}>
+                          {getJenisPrefix(item.jenis)}: {item.name}
+                          <span className="normal-case font-normal ml-1.5 text-muted-foreground">
+                            ({item.missing.length} siswa)
+                          </span>
+                        </p>
+                        <div className="flex flex-wrap gap-1.5">
+                          {item.missing.map((st) => (
+                            <button
+                              key={`ms-${st.id}-${item.name}`}
+                              onClick={() => handleMissingStudentClick(st.id, item.name, st.scoreId)}
+                              className={cn(
+                                "inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium transition-all cursor-pointer",
+                                "bg-amber-500/10 text-amber-700 dark:text-amber-300 border border-amber-500/20",
+                                "hover:bg-amber-500/20 hover:border-amber-500/40 hover:shadow-sm"
+                              )}
+                              title={`Klik untuk langsung isi nilai ${st.nama}`}
+                            >
+                              <span>👤</span>
+                              <span>{st.nama}</span>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+
           <div className="bg-card border rounded-xl overflow-hidden">
             <div className="overflow-x-auto">
               <table className="w-full text-sm border-collapse">
@@ -641,7 +784,14 @@ export default function RekapNilai() {
                     const na = calcNA(avgF, avgS, stsVal, sasVal);
 
                     return (
-                      <tr key={st.id} className="border-t hover:bg-muted/30 transition-colors group">
+                      <tr
+                        key={st.id}
+                        id={`row-${st.id}`}
+                        className={cn(
+                          "border-t hover:bg-muted/30 transition-all group",
+                          highlightStudentId === st.id && "bg-amber-500/15 animate-pulse ring-1 ring-amber-500/40"
+                        )}
+                      >
                         <td className="py-3 px-4 text-muted-foreground sticky left-0 z-10 bg-card group-hover:bg-muted/30 transition-colors">{i + 1}</td>
                         <td className="py-3 px-4 font-medium sticky left-[48px] z-10 bg-card group-hover:bg-muted/30 transition-colors after:content-[''] after:absolute after:right-0 after:top-0 after:bottom-0 after:w-px after:bg-border">{st.nama}</td>
                         {(view === "ALL" || view === "FORMATIF") && formatifNames.map((name) => {
